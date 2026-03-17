@@ -1,0 +1,568 @@
+<script>
+// ============================================================
+// SCRIPTS.HTML — Client-side routing and page rendering
+// ============================================================
+
+let currentPage = 'home';
+
+// ── Navigation ───────────────────────────────────────────────
+function navigate(page) {
+  currentPage = page;
+  renderPage(page);
+  updateActiveNav(page);
+  window.scrollTo(0, 0);
+}
+
+function updateActiveNav(page) {
+  // Clear all active states
+  document.querySelectorAll('.nav-item, .nav-child').forEach(el => el.classList.remove('active'));
+
+  // Set active on matching nav item or child
+  const all = document.querySelectorAll('[data-page]');
+  all.forEach(el => {
+    if (el.getAttribute('data-page') === page) el.classList.add('active');
+  });
+
+  // Auto-open parent group if a child is active
+  const childGroups = { 'bsi': 'bsi-group', 'bsi-overview': 'bsi-group', 'bsi-technical': 'bsi-group', 'bsi-onepager': 'bsi-group',
+                        'psi': 'psi-group', 'psi-overview': 'psi-group', 'psi-technical': 'psi-group', 'psi-onepager': 'psi-group' };
+  const carets      = { 'bsi-group': 'bsi-caret', 'psi-group': 'psi-caret' };
+
+  const groupId = childGroups[page];
+  if (groupId) {
+    const group = document.getElementById(groupId);
+    const caret = document.getElementById(carets[groupId]);
+    if (group)  group.classList.add('open');
+    if (caret)  caret.classList.add('open');
+  }
+}
+
+function toggleGroup(groupId) {
+  const group = document.getElementById(groupId);
+  const caretMap = { 'bsi-group': 'bsi-caret', 'psi-group': 'psi-caret' };
+  const caret = document.getElementById(caretMap[groupId]);
+  if (!group) return;
+  group.classList.toggle('open');
+  if (caret) caret.classList.toggle('open');
+}
+
+// ── Page Router ───────────────────────────────────────────────
+function renderPage(page) {
+  const container = document.getElementById('page-container');
+  switch (page) {
+    case 'home':         container.innerHTML = pagHome();         break;
+    case 'feedback':     container.innerHTML = pagFeedback();     break;
+    case 'bsi':          container.innerHTML = pagBSI();          break;
+    case 'bsi-overview': container.innerHTML = pagBSIOverview();  break;
+    case 'bsi-technical':container.innerHTML = pagBSITechnical(); break;
+    case 'bsi-onepager': container.innerHTML = pagBSIOnePager();  break;
+    case 'psi':          container.innerHTML = pagPSI();          break;
+    case 'psi-overview': container.innerHTML = pagPSIOverview();  break;
+    case 'psi-technical':container.innerHTML = pagPSITechnical(); break;
+    case 'psi-onepager': container.innerHTML = pagPSIOnePager();  break;
+    default:             container.innerHTML = pagHome();
+  }
+}
+
+// ── Breadcrumb helper ─────────────────────────────────────────
+function bc(parts) {
+  return `<div class="breadcrumb">${parts.map((p, i) =>
+    i < parts.length - 1
+      ? `<span onclick="navigate('${p.page}')">${p.label}</span><span class="sep">›</span>`
+      : `<span style="color:var(--text-dark);font-weight:600;">${p.label}</span>`
+  ).join('')}</div>`;
+}
+
+// ============================================================
+// PAGE: HOME
+// ============================================================
+function pagHome() {
+  return `
+    <div class="hero-banner">
+      <h1>Spreadsheet <span>Integration Hub</span></h1>
+      <p>A unified suite of Google Sheets tools built to streamline AppFolio onboarding. Each tool handles a distinct phase of the process — from building records from scratch to patching existing data and managing financials.</p>
+      <div class="hero-pill-row">
+        <span class="hero-pill">Google Sheets + Apps Script</span>
+        <span class="hero-pill">AppFolio Bulk API</span>
+        <span class="hero-pill">Built for Onboarding Teams</span>
+      </div>
+    </div>
+
+    <div class="section-title">Available Tools</div>
+    <div class="card-grid">
+      <div class="tool-card" onclick="navigate('bsi')">
+        <span class="tool-card-badge badge-live">Live</span>
+        <div class="tool-card-icon">🔨</div>
+        <div class="tool-card-name">BSI</div>
+        <div class="tool-card-full">Build Spreadsheet Integration</div>
+        <div class="tool-card-desc">Creates net-new records in AppFolio in bulk — banks, owners, properties, units, tenants, vendors, and more. Designed for incremental, non-destructive loading.</div>
+      </div>
+      <div class="tool-card" onclick="navigate('psi')">
+        <span class="tool-card-badge badge-live">Live</span>
+        <div class="tool-card-icon">🔧</div>
+        <div class="tool-card-name">PSI</div>
+        <div class="tool-card-full">Patch Spreadsheet Integration</div>
+        <div class="tool-card-desc">Updates existing records in AppFolio via PATCH operations. Handles field corrections and updates without re-creating records from scratch.</div>
+      </div>
+      <div class="tool-card disabled">
+        <span class="tool-card-badge badge-soon">Phase 2</span>
+        <div class="tool-card-icon">📊</div>
+        <div class="tool-card-name">FSI</div>
+        <div class="tool-card-full">Financial Spreadsheet Integration</div>
+        <div class="tool-card-desc">Handles financial data loading — currently in development as part of Phase 2 of the integration suite.</div>
+      </div>
+    </div>
+
+    <div class="section-title">How the Suite Fits Together</div>
+    <div class="card">
+      <p>The tools are designed to work in sequence across the onboarding lifecycle. <strong>BSI</strong> is the starting point — it creates the foundational records (entities, properties, units, tenants) that everything else depends on. <strong>PSI</strong> sits alongside it, allowing targeted updates to records already in AppFolio without touching what doesn't need to change. <strong>FSI</strong> will extend the suite into financial data territory in Phase 2.</p>
+      <br/>
+      <p>All three tools share the same Google Sheets architecture, AppFolio branding, and row-level status tracking pattern — so the workflow is consistent across projects regardless of which tool you're in.</p>
+    </div>
+
+    <div class="section-title">Who This Is For</div>
+    <div class="card-grid">
+      <div class="card">
+        <h3>🧭 Onboarding Managers</h3>
+        <p>Drive the project without needing to understand the API. Use the Prep - Load - Sync cycle, monitor row statuses, and review the audit log to track progress across object types.</p>
+      </div>
+      <div class="card">
+        <h3>⚙️ Technical Users</h3>
+        <p>Full access to load logic, field mappings, error detail, and the audit log. The Technical Guide sections cover every step of each tool's workflow in depth.</p>
+      </div>
+      <div class="card">
+        <h3>🆕 New Hires</h3>
+        <p>Start with the One-Pagers for a plain-language summary of each tool, then move to the Overview to understand where each tool fits in the onboarding process.</p>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// PAGE: FEEDBACK
+// ============================================================
+function pagFeedback() {
+  return `
+    <div class="page-header">
+      <h1>Feedback</h1>
+      <p>Help us improve the Integration Hub and its tools. Your feedback goes directly to the team.</p>
+    </div>
+    <div class="card" style="max-width:580px;">
+      <div class="callout callout-blue" style="margin-bottom:20px;">
+        <strong>Note:</strong> This form will be connected to your existing feedback pipeline. The layout and fields below are ready to wire up.
+      </div>
+      <div class="form-group">
+        <label>Your Name</label>
+        <input type="text" placeholder="First Last" />
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <select>
+          <option value="">Select your role...</option>
+          <option>Onboarding Manager (OM)</option>
+          <option>Technical User</option>
+          <option>Project Lead</option>
+          <option>New Hire</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Related Tool</label>
+        <select>
+          <option value="">Select a tool...</option>
+          <option>BSI - Build Spreadsheet Integration</option>
+          <option>PSI - Patch Spreadsheet Integration</option>
+          <option>FSI - Financial Spreadsheet Integration</option>
+          <option>Hub General</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Type</label>
+        <select>
+          <option value="">Select type...</option>
+          <option>Bug Report</option>
+          <option>Feature Request</option>
+          <option>General Comment</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Details</label>
+        <textarea placeholder="Describe the issue, request, or comment..."></textarea>
+      </div>
+      <button class="btn-primary">Submit Feedback</button>
+    </div>
+  `;
+}
+
+// ============================================================
+// PAGE: BSI ROOT
+// ============================================================
+function pagBSI() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'BSI'}])}
+    <div class="page-header">
+      <h1><span>BSI</span> - Build Spreadsheet Integration</h1>
+      <p>Creates net-new records in AppFolio in bulk via the AppFolio Bulk API. The foundation of the onboarding data load.</p>
+    </div>
+    <div class="card-grid">
+      <div class="tool-card" onclick="navigate('bsi-overview')">
+        <div class="tool-card-icon">📋</div>
+        <div class="tool-card-name">Overview</div>
+        <div class="tool-card-desc">High-level summary of what BSI does, who uses it, and how it fits into a project.</div>
+      </div>
+      <div class="tool-card" onclick="navigate('bsi-technical')">
+        <div class="tool-card-icon">⚙️</div>
+        <div class="tool-card-name">Technical Guide</div>
+        <div class="tool-card-desc">Full step-by-step workflow — Setup, Prep, Load, Sync, and Audit with field-level detail.</div>
+      </div>
+      <div class="tool-card" onclick="navigate('bsi-onepager')">
+        <div class="tool-card-icon">📄</div>
+        <div class="tool-card-name">One-Pager</div>
+        <div class="tool-card-desc">A concise shareable reference covering capabilities, load order, and limitations.</div>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// PAGE: BSI OVERVIEW
+// ============================================================
+function pagBSIOverview() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'BSI',page:'bsi'},{label:'Overview'}])}
+    <div class="page-header">
+      <h1>BSI <span>Overview</span></h1>
+      <p>What it is, who uses it, and how it fits into an onboarding project.</p>
+    </div>
+
+    <div class="callout callout-blue">
+      <strong>Core value:</strong> BSI tracks every row individually. Rows marked Success are permanently skipped on future runs — only new or fixed rows get processed. You can add records mid-project, fix errors and re-run, or load object types across multiple sessions without touching anything already in AppFolio.
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h2>What BSI Does</h2>
+      <p>BSI is a Google Sheets sidebar that connects directly to the AppFolio Bulk API to create onboarding records in volume. It handles the full set of entities needed to stand up a new AppFolio environment — from bank accounts through to tenant occupancies and recurring charges. Each load is additive and non-destructive: records already in AppFolio are never re-sent.</p>
+    </div>
+
+    <div class="section-title">Supported Objects</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Primary objects</p>
+    <div class="badge-grid">
+      <span class="obj-badge">Banks</span>
+      <span class="obj-badge">Owners</span>
+      <span class="obj-badge">Properties</span>
+      <span class="obj-badge">Unit Types</span>
+      <span class="obj-badge">Units</span>
+      <span class="obj-badge">Tenants</span>
+      <span class="obj-badge">Vendors</span>
+    </div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Sub-operations</p>
+    <div class="badge-grid">
+      <span class="obj-badge sub">Owner Assignments</span>
+      <span class="obj-badge sub">Property Late Fees</span>
+      <span class="obj-badge sub">Occupancy Late Fees</span>
+      <span class="obj-badge sub">Recurring Charges</span>
+      <span class="obj-badge sub">GL Account Sync</span>
+    </div>
+
+    <div class="section-title">Row Status System</div>
+    <div class="card">
+      <p style="margin-bottom:10px;">Every row in every sheet tab carries a status that controls what happens on the next run:</p>
+      <div>
+        <span class="s-pill s-ready">Ready</span> Validated and queued for the next Load run<br/><br/>
+        <span class="s-pill s-success">Success</span> Loaded successfully - permanently skipped on all future runs<br/><br/>
+        <span class="s-pill s-error">Error</span> Failed validation or API rejection - fix the row and re-Prep<br/><br/>
+        <span class="s-pill s-pending">Pending</span> Submitted to AppFolio asynchronously - run Sync to resolve
+      </div>
+    </div>
+
+    <div class="section-title">Who Uses It</div>
+    <div class="card-grid">
+      <div class="card">
+        <h3>🧭 Onboarding Managers</h3>
+        <p>Run Prep - Load - Sync cycles, monitor progress via the dashboard pill counts, and use the Audit tab to review outcomes by run.</p>
+      </div>
+      <div class="card">
+        <h3>⚙️ Technical Users</h3>
+        <p>Manage field mappings, review raw API responses, handle error rows, and use the debug log for deeper troubleshooting.</p>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// PAGE: BSI TECHNICAL GUIDE
+// ============================================================
+function pagBSITechnical() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'BSI',page:'bsi'},{label:'Technical Guide'}])}
+    <div class="page-header">
+      <h1>BSI <span>Technical Guide</span></h1>
+      <p>Full step-by-step walkthrough of the BSI workflow from setup through audit.</p>
+    </div>
+
+    <div class="callout callout-warn">
+      <strong>Before you begin:</strong> BSI sends exactly what is in the sheet. Source data must be cleaned and formatted before running Prep. Errors in source data result in API rejections or bad records in AppFolio.
+    </div>
+
+    <div class="card">
+      <div class="section-title">Step-by-Step Workflow</div>
+      <ul class="step-list">
+
+        <li class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Setup - Connect and Configure</h4>
+            <p>Open the AppFolio Load Tool sidebar via the <em>Onboarding API</em> menu. Navigate to the Setup tab and enter your API credentials (Developer ID, Client ID, Client Secret). Select your target environment - IMPORT for testing, LIVE for production. The sidebar header will confirm the connected company name once credentials are saved.</p>
+            <ul>
+              <li>Always confirm the environment label before running any load</li>
+              <li>GL Accounts must be synced from AppFolio before loading Recurring Charges</li>
+              <li>Use the Setup checklist to confirm all pre-load steps are complete</li>
+            </ul>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Prepare Data in Sheet Tabs</h4>
+            <p>Each object type has its own sheet tab (Banks, Owners, Properties, etc.). Populate rows with source data. Column headers must match the expected field names exactly. Reference IDs are auto-generated during Prep for most objects.</p>
+            <ul>
+              <li>SFR units are auto-created by AppFolio - the tool PATCHes marketing info only</li>
+              <li>Recurring Charges are inline columns on the Tenants sheet, not a separate tab</li>
+              <li>Owner and Occupancy late fees use dedicated status columns on their respective sheets</li>
+            </ul>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Prep - Validate Before Sending</h4>
+            <p>Click Prep for each object type in the Load tab. Prep validates every non-Success row against required fields, formats, and cross-object dependencies. Rows are stamped Ready or Error - no data is sent to AppFolio during this step.</p>
+            <ul>
+              <li>Bank IDs, Owner IDs, Unit IDs etc. are resolved and stored as cell Notes during Prep</li>
+              <li>All errors on a row are shown together so you can fix everything in one pass</li>
+              <li>Re-Prep after fixing errors - Success rows are always skipped</li>
+            </ul>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <h4>Load Order - Dependencies Must Be Respected</h4>
+            <p>Objects must be loaded in sequence because each step depends on IDs from the prior step. The sidebar enforces this with dependency gates - Load buttons are disabled until dependencies are met.</p>
+            <ul>
+              <li>Banks first - Properties require bank account IDs</li>
+              <li>Owners + Properties (both loaded and synced) before Owner Assignments</li>
+              <li>Properties before Unit Types, Unit Types before Units</li>
+              <li>Units before Tenants - Tenants must be synced before Recurring Charges and Occupancy Late Fees</li>
+              <li>GL Accounts synced before Recurring Charges</li>
+              <li>Properties loaded before Property Late Fees</li>
+            </ul>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">5</div>
+          <div class="step-content">
+            <h4>Load - Send to AppFolio</h4>
+            <p>Click Load for each object type. Only Ready rows are sent, in batches of 40 records per API call. Results are written back to the sheet after each batch - a failure in one batch does not affect others. Success rows will never be re-sent.</p>
+            <ul>
+              <li>Rows are stamped Success (green), Error (red), or Pending (amber) immediately after each batch</li>
+              <li>Large loads can be safely interrupted - completed batches are already written</li>
+              <li>Error rows stay editable - fix the source data and re-Prep to retry</li>
+            </ul>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">6</div>
+          <div class="step-content">
+            <h4>Sync - Resolve Async Jobs</h4>
+            <p>Several object types (Owners, Unit Types, Tenants, Vendors, Late Fees) are processed asynchronously by AppFolio - the API returns a JobId immediately and resolves the record in the background. Run Sync after loading these objects to poll the Jobs endpoint and write the AppFolio IDs back to the sheet.</p>
+            <ul>
+              <li>Tenants require a two-phase sync: JobId resolves to TenantId, then a second call resolves OccupancyId</li>
+              <li>OccupancyId is required before Recurring Charges or Occupancy Late Fees can be loaded</li>
+              <li>Sync can be run from the Load tab button or the Audit tab for any log entry</li>
+            </ul>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">7</div>
+          <div class="step-content">
+            <h4>Audit - Review Every Run</h4>
+            <p>The Audit tab logs every Prep, Load, and Sync action. Each entry shows the object type, environment (IMPORT or LIVE), user, timestamp, and per-record outcomes - success count, pending jobs, and failure details with field-level error messages.</p>
+            <ul>
+              <li>Pending jobs can be synced directly from the Audit tab</li>
+              <li>Entries are labeled IMPORT or LIVE so you can distinguish test runs from production runs</li>
+              <li>Up to 100 most recent entries are shown in the dropdown</li>
+            </ul>
+          </div>
+        </li>
+
+      </ul>
+    </div>
+
+    <div class="section-title">Recovery Utilities</div>
+    <div class="card">
+      <p style="margin-bottom:10px;">Available under <em>Onboarding API</em> menu for edge cases:</p>
+      <ul class="step-list" style="padding:0;">
+        <li class="step-item">
+          <div class="step-num" style="background:#f4cccc;color:#742a2a;">!</div>
+          <div class="step-content">
+            <h4>Reset Checklist</h4>
+            <p>Clears all saved step progress. Use when starting a new onboarding project on the same spreadsheet.</p>
+          </div>
+        </li>
+        <li class="step-item">
+          <div class="step-num" style="background:#fff2cc;color:#744210;">!</div>
+          <div class="step-content">
+            <h4>Release Occupancy Lock</h4>
+            <p>Clears a stuck mutex if a Tenants load or sync was interrupted mid-run and the sidebar shows steps as locked.</p>
+          </div>
+        </li>
+        <li class="step-item">
+          <div class="step-num" style="background:#fff2cc;color:#744210;">!</div>
+          <div class="step-content">
+            <h4>Clear Dependencies</h4>
+            <p>Bypasses dependency gates without altering step states. Useful when re-running against a pre-populated environment where prior steps don't need to be re-run.</p>
+          </div>
+        </li>
+      </ul>
+    </div>
+  `;
+}
+
+// ============================================================
+// PAGE: BSI ONE-PAGER
+// ============================================================
+function pagBSIOnePager() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'BSI',page:'bsi'},{label:'One-Pager'}])}
+    <div class="page-header">
+      <h1>BSI <span>One-Pager</span></h1>
+      <p>A concise reference for OMs and partners — capabilities, load order, and what BSI cannot do.</p>
+    </div>
+    <div class="onepager-wrap">
+      <div class="onepager-toolbar">
+        <span>📄 BSI One-Pager — Build Spreadsheet Integration</span>
+      </div>
+      <div class="onepager-content">
+
+        <div class="callout callout-blue" style="margin-bottom:20px;">
+          <strong>Core value:</strong> BSI tracks every row individually. Success rows are permanently skipped - only new or fixed rows get processed. Add records mid-project, fix errors and re-run, or load object types across multiple sessions without affecting what is already in AppFolio.
+        </div>
+
+        <div class="section-title">What Can Be Loaded</div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">Primary objects</p>
+        <div class="badge-grid">
+          <span class="obj-badge">Banks</span><span class="obj-badge">Owners</span><span class="obj-badge">Properties</span>
+          <span class="obj-badge">Unit Types</span><span class="obj-badge">Units</span><span class="obj-badge">Tenants</span><span class="obj-badge">Vendors</span>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">Sub-operations</p>
+        <div class="badge-grid">
+          <span class="obj-badge sub">Owner Assignments</span><span class="obj-badge sub">Property Late Fees</span>
+          <span class="obj-badge sub">Occupancy Late Fees</span><span class="obj-badge sub">Recurring Charges</span><span class="obj-badge sub">GL Account Sync</span>
+        </div>
+
+        <div class="section-title" style="margin-top:20px;">Required Load Order</div>
+        <div class="card" style="box-shadow:none;">
+          <ul class="step-list" style="padding:0;">
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">1</div><div class="step-content"><h4>Banks</h4><p style="font-size:12px;">Must exist before Properties can be linked to bank accounts.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">2</div><div class="step-content"><h4>Owners + Properties (both required before Owner Assignments)</h4><p style="font-size:12px;">Both must be loaded and synced. Owner Assignments require IDs from both.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">3</div><div class="step-content"><h4>Properties - Unit Types - Units</h4><p style="font-size:12px;">Each step requires the prior object's AppFolio ID.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">4</div><div class="step-content"><h4>Units - Tenants (+ Sync) - Recurring Charges</h4><p style="font-size:12px;">OccupancyId from Tenant Sync is required before Recurring Charges can be loaded.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">5</div><div class="step-content"><h4>Late Fees (property or occupancy level)</h4><p style="font-size:12px;">Property Late Fees require a loaded Property. Occupancy Late Fees require a synced Tenant (OccupancyId).</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">6</div><div class="step-content"><h4>GL Account Sync before Recurring Charges</h4><p style="font-size:12px;">GL UUIDs are stored as cell Notes during sync and resolved at Prep time.</p></div></li>
+          </ul>
+        </div>
+
+        <div class="section-title" style="margin-top:20px;">What BSI Cannot Do</div>
+        <div class="card" style="box-shadow:none;">
+          <ul style="padding-left:16px;font-size:13px;color:var(--text-body);line-height:2;">
+            <li>Delete records already in AppFolio</li>
+            <li>Load work orders, maintenance requests, or inspections</li>
+            <li>Load lease documents or file attachments</li>
+            <li>Load portal settings or owner/tenant preferences</li>
+            <li>Transform or clean source data - data must arrive pre-formatted</li>
+            <li>Replace the manual GL Account import in the AppFolio UI</li>
+            <li>Operate outside of Google Sheets</li>
+          </ul>
+        </div>
+
+        <div class="callout callout-warn" style="margin-top:16px;">
+          <strong>Data responsibility:</strong> BSI sends exactly what is in the sheet. Pre-clean and validate source data before running Prep - errors in source data result in API rejections or bad records in AppFolio.
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// PAGE: PSI ROOT + STUBS
+// ============================================================
+function pagPSI() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'PSI'}])}
+    <div class="page-header">
+      <h1><span>PSI</span> - Patch Spreadsheet Integration</h1>
+      <p>Updates existing records in AppFolio via PATCH operations - field corrections and updates without re-creating records.</p>
+    </div>
+    <div class="card-grid">
+      <div class="tool-card" onclick="navigate('psi-overview')">
+        <div class="tool-card-icon">📋</div>
+        <div class="tool-card-name">Overview</div>
+        <div class="tool-card-desc">High-level summary of what PSI does and how it differs from BSI.</div>
+      </div>
+      <div class="tool-card" onclick="navigate('psi-technical')">
+        <div class="tool-card-icon">⚙️</div>
+        <div class="tool-card-name">Technical Guide</div>
+        <div class="tool-card-desc">Step-by-step PATCH workflow and field-level instructions.</div>
+      </div>
+      <div class="tool-card" onclick="navigate('psi-onepager')">
+        <div class="tool-card-icon">📄</div>
+        <div class="tool-card-name">One-Pager</div>
+        <div class="tool-card-desc">Concise reference covering PSI capabilities and limitations.</div>
+      </div>
+    </div>
+  `;
+}
+
+function pagPSIOverview() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'PSI',page:'psi'},{label:'Overview'}])}
+    <div class="page-header"><h1>PSI <span>Overview</span></h1></div>
+    <div class="coming-soon">
+      <div class="cs-icon">🔧</div>
+      <h2>Content Coming Soon</h2>
+      <p>PSI overview documentation is being prepared. Check back shortly or contact your project lead.</p>
+    </div>
+  `;
+}
+
+function pagPSITechnical() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'PSI',page:'psi'},{label:'Technical Guide'}])}
+    <div class="page-header"><h1>PSI <span>Technical Guide</span></h1></div>
+    <div class="coming-soon">
+      <div class="cs-icon">⚙️</div>
+      <h2>Content Coming Soon</h2>
+      <p>The PSI technical guide is being written. It will cover the full PATCH workflow once ready.</p>
+    </div>
+  `;
+}
+
+function pagPSIOnePager() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'PSI',page:'psi'},{label:'One-Pager'}])}
+    <div class="page-header"><h1>PSI <span>One-Pager</span></h1></div>
+    <div class="coming-soon">
+      <div class="cs-icon">📄</div>
+      <h2>Content Coming Soon</h2>
+      <p>The PSI one-pager will be added here once the tool documentation is finalized.</p>
+    </div>
+  `;
+}
+</script>
