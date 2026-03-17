@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spreadsheet Integration Hub</title>
+  <?!= include('Styles'); ?>
+</head>
+<body>
+
+  <!-- ── Sidebar ─────────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">SI</div>
+      <div>
+        <div class="logo-title">Integration Hub</div>
+        <div class="logo-sub">AppFolio Tooling</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-group-label">General</div>
+      <a class="nav-item" data-page="home" onclick="navigate('home')">
+        <span class="nav-icon">⌂</span> Home
+      </a>
+      <a class="nav-item" data-page="feedback" onclick="navigate('feedback')">
+        <span class="nav-icon">✉</span> Feedback
+      </a>
+
+      <div class="nav-group-label" style="margin-top:18px;">Tools</div>
+
+      <div class="nav-group">
+        <a class="nav-item nav-parent" data-page="bsi" onclick="toggleGroup('bsi-group'); navigate('bsi')">
+          <span class="nav-icon">🔨</span> BSI
+          <span class="nav-caret" id="bsi-caret">›</span>
+        </a>
+        <div class="nav-children" id="bsi-group">
+          <a class="nav-child" data-page="bsi-overview"    onclick="navigate('bsi-overview')">Overview</a>
+          <a class="nav-child" data-page="bsi-technical"   onclick="navigate('bsi-technical')">Technical Guide</a>
+          <a class="nav-child" data-page="bsi-onepager"    onclick="navigate('bsi-onepager')">One-Pager</a>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <a class="nav-item nav-parent" data-page="psi" onclick="toggleGroup('psi-group'); navigate('psi')">
+          <span class="nav-icon">🔧</span> PSI
+          <span class="nav-caret" id="psi-caret">›</span>
+        </a>
+        <div class="nav-children" id="psi-group">
+          <a class="nav-child" data-page="psi-overview"    onclick="navigate('psi-overview')">Overview</a>
+          <a class="nav-child" data-page="psi-technical"   onclick="navigate('psi-technical')">Technical Guide</a>
+          <a class="nav-child" data-page="psi-onepager"    onclick="navigate('psi-onepager')">One-Pager</a>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <a class="nav-item nav-parent nav-disabled" data-page="fsi">
+          <span class="nav-icon">📊</span> FSI
+          <span class="nav-badge-soon">Soon</span>
+        </a>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-text">Phase 1 — BSI + PSI</div>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ─────────────────────────────────────── -->
+  <main class="main" id="main-content">
+    <div id="page-container">
+      <!-- Pages rendered here by JS -->
+    </div>
+  </main>
+
+  <?!= include('Scripts'); ?>
+
+  <script>
+    // Boot on the page passed from server (deep-link support)
+    navigate('<?= page ?>');
+  </script>
+
+</body>
+</html>
