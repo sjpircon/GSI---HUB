@@ -1,6 +1,6 @@
 <script>
 // ============================================================
-// SCRIPTS.HTML — Client-side routing and page rendering
+// SCRIPTS.HTML - Client-side routing and page rendering
 // ============================================================
 
 let currentPage = 'home';
@@ -14,26 +14,24 @@ function navigate(page) {
 }
 
 function updateActiveNav(page) {
-  // Clear all active states
   document.querySelectorAll('.nav-item, .nav-child').forEach(el => el.classList.remove('active'));
-
-  // Set active on matching nav item or child
   const all = document.querySelectorAll('[data-page]');
   all.forEach(el => {
     if (el.getAttribute('data-page') === page) el.classList.add('active');
   });
-
-  // Auto-open parent group if a child is active
-  const childGroups = { 'bsi': 'bsi-group', 'bsi-overview': 'bsi-group', 'bsi-technical': 'bsi-group', 'bsi-onepager': 'bsi-group',
-                        'psi': 'psi-group', 'psi-overview': 'psi-group', 'psi-technical': 'psi-group', 'psi-onepager': 'psi-group' };
-  const carets      = { 'bsi-group': 'bsi-caret', 'psi-group': 'psi-caret' };
-
+  const childGroups = {
+    'bsi': 'bsi-group', 'bsi-setup': 'bsi-group', 'bsi-overview': 'bsi-group',
+    'bsi-technical': 'bsi-group', 'bsi-onepager': 'bsi-group', 'bsi-feedback': 'bsi-group',
+    'psi': 'psi-group', 'psi-setup': 'psi-group', 'psi-overview': 'psi-group',
+    'psi-technical': 'psi-group', 'psi-onepager': 'psi-group', 'psi-feedback': 'psi-group'
+  };
+  const carets = { 'bsi-group': 'bsi-caret', 'psi-group': 'psi-caret' };
   const groupId = childGroups[page];
   if (groupId) {
     const group = document.getElementById(groupId);
     const caret = document.getElementById(carets[groupId]);
-    if (group)  group.classList.add('open');
-    if (caret)  caret.classList.add('open');
+    if (group) group.classList.add('open');
+    if (caret) caret.classList.add('open');
   }
 }
 
@@ -50,21 +48,24 @@ function toggleGroup(groupId) {
 function renderPage(page) {
   const container = document.getElementById('page-container');
   switch (page) {
-    case 'home':         container.innerHTML = pagHome();         break;
-    case 'feedback':     container.innerHTML = pagFeedback();     break;
-    case 'bsi':          container.innerHTML = pagBSI();          break;
-    case 'bsi-overview': container.innerHTML = pagBSIOverview();  break;
-    case 'bsi-technical':container.innerHTML = pagBSITechnical(); break;
-    case 'bsi-onepager': container.innerHTML = pagBSIOnePager();  break;
-    case 'psi':          container.innerHTML = pagPSI();          break;
-    case 'psi-overview': container.innerHTML = pagPSIOverview();  break;
-    case 'psi-technical':container.innerHTML = pagPSITechnical(); break;
-    case 'psi-onepager': container.innerHTML = pagPSIOnePager();  break;
-    default:             container.innerHTML = pagHome();
+    case 'home':          container.innerHTML = pagHome();         break;
+    case 'api-setup':     container.innerHTML = pagAPISetup();     break;
+    case 'feedback':      container.innerHTML = pagFeedback();     break;
+    case 'bsi-feedback':  container.innerHTML = pagBSIFeedback();  break;
+    case 'psi-feedback':  container.innerHTML = pagPSIFeedback();  break;
+    case 'bsi-setup':     container.innerHTML = pagBSISetup();     break;
+    case 'bsi-overview':  container.innerHTML = pagBSIOverview();  break;
+    case 'bsi-technical': container.innerHTML = pagBSITechnical(); break;
+    case 'bsi-onepager':  container.innerHTML = pagBSIOnePager();  break;
+    case 'psi':           container.innerHTML = pagPSI();          break;
+    case 'psi-overview':  container.innerHTML = pagPSIOverview();  break;
+    case 'psi-technical': container.innerHTML = pagPSITechnical(); break;
+    case 'psi-onepager':  container.innerHTML = pagPSIOnePager();  break;
+    default:              container.innerHTML = pagHome();
   }
 }
 
-// ── Breadcrumb helper ─────────────────────────────────────────
+
 function bc(parts) {
   return `<div class="breadcrumb">${parts.map((p, i) =>
     i < parts.length - 1
@@ -74,17 +75,388 @@ function bc(parts) {
 }
 
 // ============================================================
+// SHARED: Escalation engine (used by both BSI and PSI feedback pages)
+// ============================================================
+
+const ESC_OBJECT_TYPES_BSI = ['Banks','Properties','Units','Owners','Owner Groups','Tenants','GL Accounts','Vendors','Other'];
+const ESC_OBJECT_TYPES_PSI = ['Properties','Units','Owners','Tenants','Vendors','Other'];
+
+const ESC_CATEGORIES = {
+  BSI: [
+    {
+      id: 'bug', emoji: '🐛',
+      label: "Something in the tool isn't working",
+      sub: "Script errors, sidebar won't load, buttons not responding",
+      color: '#c53030', bg: '#fff5f5', border: '#feb2b2',
+      issueType: 'Bug / Script Error',
+      steps: [
+        { title: 'Try these first', type: 'checklist', items: [
+          'Close and reopen the sidebar: Onboarding API → 🧰 Open Toolbox',
+          'If Tenants are stuck, use: Onboarding API → 🔓 Release Occupancy Lock',
+          'If Load steps are greyed out, use: Onboarding API → ⚡ Clear Dependencies',
+          'Refresh your browser tab and try again'
+        ]},
+        { title: 'Ask a colleague', type: 'info', body: "Check with a peer who has used the tool recently. If they've seen the same issue, that's a signal it needs to be reported." },
+        { title: 'Still broken? Grab this info first', type: 'checklist', items: [
+          'Open the Audit tab in the sidebar - note the most recent Log Entry',
+          'Take a screenshot of the error or unexpected behavior',
+          'Note the object type you were working on (e.g. Banks, Tenants)',
+          'Note your environment: IMPORT or LIVE'
+        ]},
+        { title: 'Submit a report', type: 'action', body: 'Fill out the form below. A lead will review it and either resolve it or escalate to engineering.' }
+      ]
+    },
+    {
+      id: 'load', emoji: '📤',
+      label: "My data won't load (red rows or errors)",
+      sub: 'Rows turning red after Prep, Load failing, API rejections',
+      color: '#c05621', bg: '#fffaf0', border: '#fbd38d',
+      issueType: 'Data Load Failure',
+      steps: [
+        { title: 'Read the error on the red row', type: 'info', body: "The red row will usually tell you exactly what's wrong - a missing field, a bad date format, or a dependency not yet loaded. Fix it in the sheet and run Prep again." },
+        { title: 'Check your loading sequence', type: 'checklist', items: [
+          'GL Accounts synced first (Onboarding API → Sync GL Accounts)',
+          'Banks loaded before Properties',
+          'Owners loaded before Owner Assignments',
+          'Properties + Units loaded before Tenants',
+          'All prior steps show green (Success) before moving on'
+        ]},
+        { title: 'Check the Audit tab for more detail', type: 'info', body: 'Open the Audit tab in the sidebar. The most recent entry shows the raw response from AppFolio - look for an error message that gives more context than the row status.' },
+        { title: 'Ask a colleague', type: 'info', body: "If the error message is unclear or the fix isn't obvious, check with a peer. Describe the object type and paste the error text." },
+        { title: 'Still stuck? Submit a report', type: 'action', body: 'Fill out the form below so a lead can help diagnose.' }
+      ]
+    },
+    {
+      id: 'feedback', emoji: '💬',
+      label: 'The tool is missing something or could work better',
+      sub: 'Workflow gaps, confusing steps, feature ideas, edge cases',
+      color: '#2b6cb0', bg: '#ebf8ff', border: '#90cdf4',
+      issueType: 'BSI Feedback',
+      steps: [
+        { title: 'Check the documentation first', type: 'info', body: 'Before flagging a gap, check the BSI Technical Guide and One-Pager in the GSI Hub. The behavior may already be documented.' },
+        { title: 'Note what you expected vs. what happened', type: 'checklist', items: [
+          'Which object or step were you working on?',
+          'What did you expect the tool to do?',
+          'What actually happened instead?',
+          'Is this a one-off or something you see repeatedly?',
+          'Do you have a workaround for now?'
+        ]},
+        { title: 'Submit your feedback', type: 'action', body: 'Use the form below to log it. Feedback is reviewed weekly and prioritized based on frequency and impact.' }
+      ]
+    },
+    {
+      id: 'sop', emoji: '📄',
+      label: 'The documentation or SOP is wrong or unclear',
+      sub: 'Missing steps, outdated guidance, confusing instructions',
+      color: '#276749', bg: '#f0fff4', border: '#9ae6b4',
+      issueType: 'SOP / Doc Gap',
+      steps: [
+        { title: "Confirm it's actually a gap", type: 'info', body: "Check whether the tool behavior you experienced matches what the documentation describes. If the docs say one thing and the tool does another, that's a real gap worth flagging." },
+        { title: 'Note the specifics', type: 'checklist', items: [
+          'Which section or step is unclear or wrong?',
+          'What does it currently say?',
+          'What should it say or include instead?',
+          'Did this cause an actual issue during a load?'
+        ]},
+        { title: 'Submit your feedback', type: 'action', body: 'Use the form below. Doc gaps are reviewed by the onboarding leads and corrected within 3 business days.' }
+      ]
+    }
+  ],
+  PSI: [
+    {
+      id: 'bug', emoji: '🐛',
+      label: "Something in the tool isn't working",
+      sub: "Script errors, sidebar won't load, PATCH not executing",
+      color: '#c53030', bg: '#fff5f5', border: '#feb2b2',
+      issueType: 'Bug / Script Error',
+      steps: [
+        { title: 'Try these first', type: 'checklist', items: [
+          'Close and reopen the sidebar via the Onboarding API menu',
+          'Refresh your browser tab and try again',
+          'Confirm your API credentials are still valid in the Setup tab'
+        ]},
+        { title: 'Still broken? Grab this info first', type: 'checklist', items: [
+          'Take a screenshot of the error or unexpected behavior',
+          'Note the object type you were working on',
+          'Note your environment: IMPORT or LIVE'
+        ]},
+        { title: 'Submit a report', type: 'action', body: 'Fill out the form below. A lead will review it and either resolve it or escalate to engineering.' }
+      ]
+    },
+    {
+      id: 'patch', emoji: '🔧',
+      label: "My record won't update (patch failing or not applying)",
+      sub: 'PATCH requests returning errors, fields not updating as expected',
+      color: '#c05621', bg: '#fffaf0', border: '#fbd38d',
+      issueType: 'Patch Failure',
+      steps: [
+        { title: 'Check the error detail', type: 'info', body: "The row status will usually indicate what went wrong. Check that the AppFolio ID for the record is correct and that the field values match the expected format." },
+        { title: 'Verify the record exists in AppFolio', type: 'info', body: 'PATCH operations require the record to already exist. Confirm the target record is present in AppFolio before attempting a patch.' },
+        { title: 'Submit a report', type: 'action', body: 'Fill out the form below so a lead can help diagnose.' }
+      ]
+    },
+    {
+      id: 'feedback', emoji: '💬',
+      label: 'The tool is missing something or could work better',
+      sub: 'Workflow gaps, feature ideas, edge cases',
+      color: '#2b6cb0', bg: '#ebf8ff', border: '#90cdf4',
+      issueType: 'PSI Feedback',
+      steps: [
+        { title: 'Note what you expected vs. what happened', type: 'checklist', items: [
+          'Which object or step were you working on?',
+          'What did you expect the tool to do?',
+          'What actually happened instead?',
+          'Do you have a workaround for now?'
+        ]},
+        { title: 'Submit your feedback', type: 'action', body: 'Use the form below. Feedback is reviewed weekly and prioritized based on frequency and impact.' }
+      ]
+    },
+    {
+      id: 'sop', emoji: '📄',
+      label: 'The documentation is wrong or unclear',
+      sub: 'Missing steps, outdated guidance, confusing instructions',
+      color: '#276749', bg: '#f0fff4', border: '#9ae6b4',
+      issueType: 'SOP / Doc Gap',
+      steps: [
+        { title: 'Note the specifics', type: 'checklist', items: [
+          'Which section or step is unclear or wrong?',
+          'What does it currently say?',
+          'What should it say or include instead?'
+        ]},
+        { title: 'Submit your feedback', type: 'action', body: 'Use the form below. Doc gaps are reviewed by the onboarding leads and corrected within 3 business days.' }
+      ]
+    }
+  ]
+};
+
+// Escalation state — one set shared, reset on each page navigate
+let _escTool = null, _escActiveCat = null, _escOpenStep = null, _escSubmitted = false, _escSubmitting = false;
+
+function _escReset(tool) {
+  _escTool = tool; _escActiveCat = null; _escOpenStep = null;
+  _escSubmitted = false; _escSubmitting = false;
+}
+
+function _escCatList() {
+  const cats = ESC_CATEGORIES[_escTool] || [];
+  return cats.map(c => `
+    <button onclick="_escSelectCat('${c.id}')"
+      style="width:100%;background:#fff;border:1.5px solid #e2e8f0;border-left:5px solid ${c.color};
+             border-radius:10px;padding:16px 20px;text-align:left;cursor:pointer;margin-bottom:10px;
+             font-family:inherit;transition:box-shadow 0.15s;"
+      onmouseover="this.style.boxShadow='0 3px 12px rgba(0,0,0,0.07)'"
+      onmouseout="this.style.boxShadow='none'">
+      <div style="font-size:14px;font-weight:700;color:#1a1f2e;margin-bottom:3px;">${c.emoji} ${c.label}</div>
+      <div style="font-size:12px;color:#718096;">${c.sub}</div>
+    </button>`).join('');
+}
+
+function _escSelectCat(id) {
+  _escActiveCat = (ESC_CATEGORIES[_escTool] || []).find(c => c.id === id);
+  _escOpenStep = 0; _escSubmitted = false;
+  document.getElementById('esc-cat-view').style.display  = 'none';
+  document.getElementById('esc-flow-view').style.display = 'block';
+  _escRenderFlow();
+}
+
+function _escBack() {
+  _escActiveCat = null; _escOpenStep = null; _escSubmitted = false;
+  document.getElementById('esc-cat-view').style.display  = 'block';
+  document.getElementById('esc-flow-view').style.display = 'none';
+}
+
+function _escToggleStep(i) {
+  _escOpenStep = _escOpenStep === i ? null : i;
+  _escRenderFlow();
+}
+
+function _escRenderFlow() {
+  const c  = _escActiveCat;
+  const el = document.getElementById('esc-flow-card');
+  if (!el || !c) return;
+  el.style.borderColor = c.border;
+  el.innerHTML = `
+    <div style="background:${c.bg};padding:16px 20px;border-bottom:1px solid ${c.border};">
+      <div style="font-size:16px;font-weight:700;color:${c.color};margin-bottom:2px;">${c.emoji} ${c.label}</div>
+      <div style="font-size:12px;color:#718096;">${c.sub}</div>
+    </div>
+    ${c.steps.map((s, i) => _escRenderStep(s, i, c)).join('')}`;
+}
+
+function _escRenderStep(step, i, c) {
+  const isOpen = _escOpenStep === i;
+  const isLast = i === _escActiveCat.steps.length - 1;
+  let body = '';
+  if (isOpen) {
+    if (step.type === 'info') {
+      body = `<div style="padding:4px 20px 16px 58px;"><p style="font-size:13px;color:#2d3748;line-height:1.65;margin:0;">${step.body}</p></div>`;
+    } else if (step.type === 'checklist') {
+      body = `<div style="padding:4px 20px 16px 58px;"><ul style="list-style:none;padding:0;margin:0;">
+        ${step.items.map(item => `<li style="display:flex;gap:8px;font-size:13px;color:#2d3748;margin-bottom:6px;line-height:1.5;">
+          <span style="color:${c.color};font-weight:700;flex-shrink:0;">✓</span><span>${item}</span></li>`).join('')}
+      </ul></div>`;
+    } else if (step.type === 'action') {
+      const isFb = c.issueType.includes('Feedback') || c.issueType.includes('Gap');
+      body = `<div style="padding:4px 20px 16px 58px;">
+        <p style="font-size:13px;color:#2d3748;line-height:1.65;margin:0 0 14px;">${step.body}</p>
+        ${_escSubmitted
+          ? `<div style="background:#f0fff4;border:1.5px solid #68d391;border-radius:8px;padding:12px 16px;font-size:13px;color:#276749;font-weight:600;">
+               ✅ Submitted! A lead will review your ${isFb ? 'feedback' : 'report'} shortly.
+             </div>`
+          : _escRenderForm(c)}
+      </div>`;
+    }
+  }
+  return `
+    <div style="${isLast ? '' : 'border-bottom:1px solid #f0f4f8;'}">
+      <div onclick="_escToggleStep(${i})"
+        style="display:flex;align-items:center;gap:12px;padding:13px 20px;cursor:pointer;
+               background:${isOpen ? '#fafbfc' : '#fff'};">
+        <div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;font-size:12px;font-weight:700;
+                    display:flex;align-items:center;justify-content:center;
+                    background:${isOpen ? c.color : '#edf2f7'};color:${isOpen ? '#fff' : '#718096'};">${i + 1}</div>
+        <div style="flex:1;font-size:13px;font-weight:600;color:#1a1f2e;">${step.title}</div>
+        <span style="font-size:11px;color:#a0aec0;">${isOpen ? '▲' : '▼'}</span>
+      </div>
+      ${body}
+    </div>`;
+}
+
+function _escRenderForm(c) {
+  const objTypes = _escTool === 'BSI' ? ESC_OBJECT_TYPES_BSI : ESC_OBJECT_TYPES_PSI;
+  const isFb     = c.issueType.includes('Feedback') || c.issueType.includes('Gap');
+  return `
+    <div style="display:flex;flex-direction:column;gap:0;">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.9px;color:#a0aec0;margin-bottom:10px;">Client Details</div>
+      <div style="margin-bottom:12px;"><label style="display:block;font-size:12px;font-weight:600;color:#2d3748;margin-bottom:4px;">Customer Name *</label>
+        <input id="esc-customer" type="text" placeholder="e.g. Acme Property Management" style="${_escInputStyle()}"/></div>
+      <div style="margin-bottom:12px;"><label style="display:block;font-size:12px;font-weight:600;color:#2d3748;margin-bottom:4px;">PMREO Link *</label>
+        <input id="esc-pmreo" type="text" placeholder="https://..." style="${_escInputStyle()}"/></div>
+      <div style="margin-bottom:12px;"><label style="display:block;font-size:12px;font-weight:600;color:#2d3748;margin-bottom:4px;">Spreadsheet Link *</label>
+        <input id="esc-sheet" type="text" placeholder="https://docs.google.com/..." style="${_escInputStyle()}"/></div>
+      <div style="margin-bottom:12px;"><label style="display:block;font-size:12px;font-weight:600;color:#2d3748;margin-bottom:4px;">Database Link *</label>
+        <input id="esc-db" type="text" placeholder="https://..." style="${_escInputStyle()}"/></div>
+      <hr style="border:none;border-top:1.5px dashed #e2e8f0;margin:14px 0;"/>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.9px;color:#a0aec0;margin-bottom:10px;">Issue Details</div>
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <label style="font-size:12px;font-weight:600;color:#2d3748;">Issue Type</label>
+        <span style="background:${c.bg};color:${c.color};border:1px solid ${c.border};border-radius:5px;padding:3px 10px;font-size:12px;font-weight:700;">${c.emoji} ${c.issueType}</span>
+      </div>
+      <div style="margin-bottom:12px;"><label style="display:block;font-size:12px;font-weight:600;color:#2d3748;margin-bottom:4px;">Object Type *</label>
+        <select id="esc-object" style="${_escInputStyle()}">
+          <option value="">Select object type...</option>
+          ${objTypes.map(o => `<option value="${o}">${o}</option>`).join('')}
+        </select></div>
+      <div style="margin-bottom:12px;"><label style="display:block;font-size:12px;font-weight:600;color:#2d3748;margin-bottom:4px;">Description *</label>
+        <textarea id="esc-desc" rows="4" placeholder="Describe the issue, what you expected, and any error text."
+          style="${_escInputStyle()}resize:vertical;line-height:1.5;min-height:90px;"></textarea></div>
+      <div style="margin-bottom:12px;"><label style="display:block;font-size:12px;font-weight:600;color:#2d3748;margin-bottom:4px;">Screenshots (optional)</label>
+        <input id="esc-shots" type="text" placeholder="Paste a Drive link to any screenshots" style="${_escInputStyle()}"/></div>
+      <div id="esc-error" style="display:none;font-size:12px;color:#e53e3e;font-weight:600;margin-bottom:8px;"></div>
+      <button id="esc-submit" onclick="_escSubmit()"
+        style="background:${c.color};color:#fff;border:none;border-radius:7px;padding:9px 20px;
+               font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;align-self:flex-start;">
+        Submit ${isFb ? 'Feedback' : 'Report'} →
+      </button>
+    </div>`;
+}
+
+function _escInputStyle() {
+  return 'width:100%;box-sizing:border-box;padding:8px 10px;font-size:13px;border:1.5px solid #e2e8f0;border-radius:6px;font-family:inherit;color:#1a1f2e;background:#fff;';
+}
+
+function _escSubmit() {
+  if (_escSubmitting) return;
+  const get = id => (document.getElementById(id)?.value || '').trim();
+  const customer = get('esc-customer'), pmreo = get('esc-pmreo');
+  const sheet    = get('esc-sheet'),    db    = get('esc-db');
+  const obj      = get('esc-object'),   desc  = get('esc-desc');
+  const shots    = get('esc-shots');
+  const errEl    = document.getElementById('esc-error');
+  if (!customer || !pmreo || !sheet || !db) {
+    errEl.textContent = 'Please fill out all Client Details fields.'; errEl.style.display = 'block'; return;
+  }
+  if (!obj || !desc) {
+    errEl.textContent = 'Please fill out Object Type and Description.'; errEl.style.display = 'block'; return;
+  }
+  errEl.style.display = 'none';
+  const btn = document.getElementById('esc-submit');
+  btn.textContent = 'Submitting…'; btn.disabled = true; _escSubmitting = true;
+  google.script.run
+    .withSuccessHandler(() => {
+      google.script.run
+        .withSuccessHandler(() => { _escSubmitting = false; _escSubmitted = true; _escRenderFlow(); })
+        .withFailureHandler(e => { _escSubmitting = false; btn.disabled = false; btn.textContent = 'Submit →'; errEl.textContent = 'Submission failed: ' + (e.message || 'Unknown error.'); errEl.style.display = 'block'; })
+        .submitEscalation();
+    })
+    .withFailureHandler(e => { _escSubmitting = false; btn.disabled = false; btn.textContent = 'Submit →'; errEl.textContent = 'Submission failed: ' + (e.message || 'Unknown error.'); errEl.style.display = 'block'; })
+    .saveEscalationDraft(_escTool, customer, pmreo, sheet, db, _escActiveCat.issueType, obj, desc, shots || 'N/A', new Date().toISOString());
+}
+
+// ── Shared feedback page shell ────────────────────────────────
+function _escPageShell(tool, toolFull) {
+  _escReset(tool);
+  return `
+    ${bc([{label:'Home',page:'home'},{label:tool,page:tool.toLowerCase()},{label:'Feedback'}])}
+    <div class="page-header">
+      <h1>${tool} <span>Feedback & Escalation</span></h1>
+      <p>Pick the situation that best describes your issue and follow the steps before submitting.</p>
+    </div>
+
+    <div id="esc-cat-view">
+      <div style="margin-bottom:16px;">${_escCatList()}</div>
+      <div class="card">
+        <div class="section-title">How Escalation Works</div>
+        <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px;margin-bottom:10px;">
+          <span style="font-size:16px;flex-shrink:0;">📋</span>
+          <div><strong>Issue Report Form</strong> <span style="color:var(--text-muted);">- For bugs and errors - feeds directly into the ${tool} issue log.</span></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px;margin-bottom:10px;">
+          <span style="font-size:16px;flex-shrink:0;">💡</span>
+          <div><strong>Feedback Form</strong> <span style="color:var(--text-muted);">- For tool and doc feedback - reviewed weekly by the onboarding leads.</span></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px;">
+          <span style="font-size:16px;flex-shrink:0;">📊</span>
+          <div><strong>${tool} Issue Log</strong> <span style="color:var(--text-muted);">- Leads use this to triage, track status, and escalate to product when needed.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="esc-flow-view" style="display:none;">
+      <button onclick="_escBack()"
+        style="background:none;border:none;color:var(--af-blue-dim);font-size:13px;font-weight:600;
+               cursor:pointer;margin-bottom:14px;padding:0;font-family:inherit;">
+        ← Back to all issues
+      </button>
+      <div id="esc-flow-card" class="card" style="padding:0;overflow:hidden;border:1.5px solid #e2e8f0;"></div>
+    </div>`;
+}
+
+// ============================================================
+// PAGE: BSI FEEDBACK
+// ============================================================
+function pagBSIFeedback() {
+  return _escPageShell('BSI', 'Build Spreadsheet Integration');
+}
+
+// ============================================================
+// PAGE: PSI FEEDBACK
+// ============================================================
+function pagPSIFeedback() {
+  return _escPageShell('PSI', 'Patch Spreadsheet Integration');
+}
+
+// ============================================================
 // PAGE: HOME
 // ============================================================
 function pagHome() {
   return `
     <div class="hero-banner">
-      <h1>Spreadsheet <span>Integration Hub</span></h1>
-      <p>A unified suite of Google Sheets tools built to streamline AppFolio onboarding. Each tool handles a distinct phase of the process — from building records from scratch to patching existing data and managing financials.</p>
+      <h1>Google Spreadsheet Integration Hub</h1>
+      <p>A unified suite of Google Sheets tools built to streamline AppFolio Onboarding. Each tool handles a distinct phase of the process - from building records from scratch to patching existing data and establishing financials.</p>
       <div class="hero-pill-row">
         <span class="hero-pill">Google Sheets + Apps Script</span>
-        <span class="hero-pill">AppFolio Bulk API</span>
-        <span class="hero-pill">Built for Onboarding Teams</span>
+        <span class="hero-pill">Onboarding API</span>
       </div>
     </div>
 
@@ -95,7 +467,7 @@ function pagHome() {
         <div class="tool-card-icon">🔨</div>
         <div class="tool-card-name">BSI</div>
         <div class="tool-card-full">Build Spreadsheet Integration</div>
-        <div class="tool-card-desc">Creates net-new records in AppFolio in bulk — banks, owners, properties, units, tenants, vendors, and more. Designed for incremental, non-destructive loading.</div>
+        <div class="tool-card-desc">Creates net-new records in AppFolio in bulk - banks, owners, properties, units, tenants, vendors, and more. Designed for incremental, non-destructive loading.</div>
       </div>
       <div class="tool-card" onclick="navigate('psi')">
         <span class="tool-card-badge badge-live">Live</span>
@@ -109,90 +481,284 @@ function pagHome() {
         <div class="tool-card-icon">📊</div>
         <div class="tool-card-name">FSI</div>
         <div class="tool-card-full">Financial Spreadsheet Integration</div>
-        <div class="tool-card-desc">Handles financial data loading — currently in development as part of Phase 2 of the integration suite.</div>
+        <div class="tool-card-desc">Handles financial data loading - currently in development as part of Phase 2 of the integration suite.</div>
       </div>
     </div>
 
     <div class="section-title">How the Suite Fits Together</div>
     <div class="card">
-      <p>The tools are designed to work in sequence across the onboarding lifecycle. <strong>BSI</strong> is the starting point — it creates the foundational records (entities, properties, units, tenants) that everything else depends on. <strong>PSI</strong> sits alongside it, allowing targeted updates to records already in AppFolio without touching what doesn't need to change. <strong>FSI</strong> will extend the suite into financial data territory in Phase 2.</p>
+      <p>The tools are designed to work in sequence across the onboarding lifecycle. <strong>BSI</strong> is the starting point - it creates the foundational records (entities, properties, units, tenants) that everything else depends on. <strong>PSI</strong> sits alongside it, allowing targeted updates to records already in AppFolio without touching what doesn't need to change. <strong>FSI</strong> will extend the suite into financial data territory in Phase 2.</p>
       <br/>
-      <p>All three tools share the same Google Sheets architecture, AppFolio branding, and row-level status tracking pattern — so the workflow is consistent across projects regardless of which tool you're in.</p>
-    </div>
-
-    <div class="section-title">Who This Is For</div>
-    <div class="card-grid">
-      <div class="card">
-        <h3>🧭 Onboarding Managers</h3>
-        <p>Drive the project without needing to understand the API. Use the Prep - Load - Sync cycle, monitor row statuses, and review the audit log to track progress across object types.</p>
-      </div>
-      <div class="card">
-        <h3>⚙️ Technical Users</h3>
-        <p>Full access to load logic, field mappings, error detail, and the audit log. The Technical Guide sections cover every step of each tool's workflow in depth.</p>
-      </div>
-      <div class="card">
-        <h3>🆕 New Hires</h3>
-        <p>Start with the One-Pagers for a plain-language summary of each tool, then move to the Overview to understand where each tool fits in the onboarding process.</p>
-      </div>
+      <p>All three tools share the same Google Sheets architecture, AppFolio branding, and row-level status tracking pattern - so the workflow is consistent across projects regardless of which tool you're in.</p>
     </div>
   `;
 }
 
 // ============================================================
-// PAGE: FEEDBACK
+// PAGE: API CONNECTION SETUP (General - one time per customer)
 // ============================================================
-function pagFeedback() {
+function pagAPISetup() {
   return `
     <div class="page-header">
-      <h1>Feedback</h1>
-      <p>Help us improve the Integration Hub and its tools. Your feedback goes directly to the team.</p>
+      <h1><span>API Connection</span> Setup</h1>
+      <p>One-time setup per customer. Must be completed by the Data Migration Specialist before any tool can connect to AppFolio.</p>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <span class="hero-pill" style="background:#f0fdf4;border:1px solid #86efac;color:#166534;">Version 1.0 - Phase 1 Pilot</span>
+        <span class="hero-pill" style="background:#eff6ff;border:1px solid #93c5fd;color:#1e40af;">Audience: Data Migration Specialists</span>
+        <span class="hero-pill" style="background:#fefce8;border:1px solid #fde047;color:#854d0e;">Last Updated: Mar 13, 2026</span>
+      </div>
     </div>
-    <div class="card" style="max-width:580px;">
-      <div class="callout callout-blue" style="margin-bottom:20px;">
-        <strong>Note:</strong> This form will be connected to your existing feedback pipeline. The layout and fields below are ready to wire up.
-      </div>
-      <div class="form-group">
-        <label>Your Name</label>
-        <input type="text" placeholder="First Last" />
-      </div>
-      <div class="form-group">
-        <label>Role</label>
-        <select>
-          <option value="">Select your role...</option>
-          <option>Onboarding Manager (OM)</option>
-          <option>Technical User</option>
-          <option>Project Lead</option>
-          <option>New Hire</option>
-          <option>Other</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Related Tool</label>
-        <select>
-          <option value="">Select a tool...</option>
-          <option>BSI - Build Spreadsheet Integration</option>
-          <option>PSI - Patch Spreadsheet Integration</option>
-          <option>FSI - Financial Spreadsheet Integration</option>
-          <option>Hub General</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Type</label>
-        <select>
-          <option value="">Select type...</option>
-          <option>Bug Report</option>
-          <option>Feature Request</option>
-          <option>General Comment</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Details</label>
-        <textarea placeholder="Describe the issue, request, or comment..."></textarea>
-      </div>
-      <button class="btn-primary">Submit Feedback</button>
+
+    <div class="callout callout-blue">
+      <strong>What is this?</strong> Before any data can be loaded into AppFolio using BSI or PSI, the Onboarding API must be connected and credentialed for each customer. This process is completed <strong>once per environment (LIVE and IMPORT)</strong> per customer project and is performed by the Data Migration Specialist. OMs should be familiar with the process but do not execute it.
+    </div>
+
+    <div class="section-title">Overview</div>
+    <div class="card" style="margin-bottom:20px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f7f9fc;border-bottom:2px solid var(--card-border);">
+            <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dark);width:60px;">Step</th>
+            <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dark);">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${[
+            ['1', 'Enter the API Cut Off Date in Salesforce. Wait for overnight sync.'],
+            ['2', 'Enable Stack Partner in AppFolio (LIVE)'],
+            ['3', 'Retrieve LIVE credentials from DeveloperSpace - save in 1Password'],
+            ['4', 'Copy to Import (CTI)'],
+            ['5', 'Disable and re-enable Stack Partner in AppFolio (IMPORT)'],
+            ['6', 'Retrieve IMPORT credentials from DeveloperSpace - save in 1Password'],
+          ].map(([n, a], i) => `
+            <tr style="border-bottom:1px solid #f0f4f8;background:${i%2===0?'#fff':'#fafbfc'};">
+              <td style="padding:10px 14px;font-weight:700;color:var(--af-blue-dim);">${n}</td>
+              <td style="padding:10px 14px;color:var(--text-body);">${a}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section-title">Step-by-Step</div>
+    <div class="card">
+      <ul class="step-list">
+
+        <li class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Enter the API Cut Off Date in Salesforce</h4>
+            <p>Navigate to the customer's record in Salesforce. Open the PMREO object for the customer project. Locate the <strong>Onboarding API Cut Off Date</strong> field under Go Live Dates and enter a date that meets both requirements:</p>
+            <ul>
+              <li>The date must be in the future</li>
+              <li>The date must be within 90 days of the customer's Go Live date</li>
+            </ul>
+            <div class="callout callout-warn" style="margin-top:10px;">
+              <strong>⚠️ Overnight sync required.</strong> This connection requires syncing overnight before you can proceed to Step 2. Do not attempt to enable in AppFolio until the following day.
+            </div>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Enable the Stack Partner in AppFolio (LIVE)</h4>
+            <div class="callout callout-warn" style="margin-bottom:10px;">
+              <strong>⚠️ Always enable LIVE first.</strong> Enabling IMPORT before LIVE will prevent you from generating the two separate sets of credentials required.
+            </div>
+            <p>Navigate to the customer's LIVE database and follow this path:</p>
+            <ul>
+              <li>Customer Service > Value+ > Stack > AppFolio Onboarding > toggle ON</li>
+              <li>Add Functionality > Integrations > AppFolio Onboarding</li>
+              <li>Click Edit > Enable > Primary > Save</li>
+            </ul>
+            <div class="callout callout-blue" style="margin-top:10px;">
+              <strong>💡 Pro tip:</strong> Duplicate your browser tab before proceeding to Step 3. You will need to return to this URL to navigate to the IMPORT environment later.
+            </div>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Retrieve and Store LIVE Credentials from DeveloperSpace</h4>
+            <div class="callout callout-warn" style="margin-bottom:10px;">
+              <strong>⚠️ The Client Secret is only shown once.</strong> Copy and store it in 1Password immediately. It cannot be retrieved again without regenerating credentials.
+            </div>
+            <p><strong>3a - Retrieve the Developer ID</strong></p>
+            <p>Log in to DeveloperSpace. Navigate to your name > Admin. Locate the Developer ID - this is a shared ID used across all customer accounts.</p>
+            <br/>
+            <p><strong>3b - Retrieve the Client ID and Client Secret</strong></p>
+            <p>In DeveloperSpace, navigate to the system entry for the customer (identified by DB/vhost name). Locate the LIVE entry.</p>
+            <div class="callout callout-warn" style="margin:10px 0;">
+              <strong>⚠️</strong> The LIVE and IMPORT entries will look identical. The only way to distinguish them is that the IMPORT entry has not yet had credentials generated.
+            </div>
+            <p><strong>3c - Save to 1Password</strong></p>
+            <p>Open 1Password and navigate to the <strong>OnboardingAPI</strong> vault. Create a new API credential using the naming convention:</p>
+            <div style="background:#f7f9fc;border:1px solid var(--card-border);border-radius:6px;padding:10px 14px;font-family:monospace;font-size:13px;margin:10px 0;">[DB/Vhost Name] - LIVE</div>
+            <p>Store: Client ID (username), Client Secret (password), Developer ID.</p>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <h4>Copy to Import (CTI)</h4>
+            <p>Run the Copy to Import action. This replicates the LIVE stack partner enablement to the IMPORT environment. Wait for the email notification confirming the CTI is complete before proceeding.</p>
+            <div class="callout callout-blue" style="margin-top:10px;">
+              <strong>💡 Pro tip:</strong> While waiting for the CTI confirmation email, use the duplicated tab from Step 2 so you are ready to update the URL and move quickly into Step 5 once notified.
+            </div>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">5</div>
+          <div class="step-content">
+            <h4>Disable and Re-enable the Stack Partner in AppFolio (IMPORT)</h4>
+            <div class="callout callout-warn" style="margin-bottom:10px;">
+              <strong>⚠️ Do not skip this step.</strong> After CTI the stack partner will already appear enabled in IMPORT. You must disable and re-enable it to generate a fresh, independent set of credentials.
+            </div>
+            <p>The IMPORT site is not accessible through normal AppFolio navigation. Using the duplicated tab from Step 2, modify the URL by adding <code style="background:#f0f4f8;padding:1px 6px;border-radius:4px;font-size:12px;">.import</code> before <code style="background:#f0f4f8;padding:1px 6px;border-radius:4px;font-size:12px;">.appfolio.com</code>.</p>
+            <ul style="margin-top:8px;">
+              <li>Navigate to the customer's IMPORT stack connection</li>
+              <li>Uncheck Enable to disable the partner - Save</li>
+              <li>Click Enable to re-enable it - this generates a new, unique set of IMPORT credentials</li>
+            </ul>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">6</div>
+          <div class="step-content">
+            <h4>Retrieve and Store IMPORT Credentials from DeveloperSpace</h4>
+            <p>Return to DeveloperSpace and navigate to the system entry for the customer. Locate the new IMPORT entry.</p>
+            <div class="callout callout-blue" style="margin:10px 0;">
+              <strong>💡</strong> Both entries will look the same. The IMPORT entry is the one where a Client Secret has not yet been generated.
+            </div>
+            <p>Open 1Password and navigate to the <strong>OnboardingAPI</strong> vault. Create a new API credential using the naming convention:</p>
+            <div style="background:#f7f9fc;border:1px solid var(--card-border);border-radius:6px;padding:10px 14px;font-family:monospace;font-size:13px;margin:10px 0;">[DB/Vhost Name] - IMPORT</div>
+            <p>Store: Client ID (username), Client Secret (password), Developer ID (same as LIVE - shared across all accounts).</p>
+          </div>
+        </li>
+
+      </ul>
     </div>
   `;
 }
+
+// ============================================================
+// PAGE: BSI SETUP (per-project - Script ID attachment)
+// ============================================================
+function pagBSISetup() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'BSI',page:'bsi'},{label:'Setup'}])}
+    <div class="page-header">
+      <h1>BSI <span>Setup</span></h1>
+      <p>Required before BSI can be used on a client project. Completed by the Data Migration Specialist each time a new spreadsheet is created.</p>
+    </div>
+
+    <div class="callout callout-blue">
+      <strong>When to do this:</strong> Every time a new Build Spreadsheet is created for a client project, the BSI script must be attached to that spreadsheet. This is a per-project task - it does not carry over between clients or spreadsheets.
+    </div>
+
+    <div class="section-title">Prerequisites</div>
+    <div class="card" style="margin-bottom:20px;">
+      <ul style="list-style:none;padding:0;">
+        <li style="padding:8px 0;border-bottom:1px solid #f0f4f8;font-size:13px;display:flex;align-items:flex-start;gap:10px;">
+          <span style="color:var(--af-blue-dim);font-weight:700;flex-shrink:0;">✓</span>
+          <span>API connection setup completed for this customer (LIVE and IMPORT credentials saved in 1Password) - see <span onclick="navigate('api-setup')" style="color:var(--af-blue-dim);cursor:pointer;text-decoration:underline;">API Connection Setup</span></span>
+        </li>
+        <li style="padding:8px 0;font-size:13px;display:flex;align-items:flex-start;gap:10px;">
+          <span style="color:var(--af-blue-dim);font-weight:700;flex-shrink:0;">✓</span>
+          <span>A new Google Spreadsheet has been created for the client project</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="section-title">Attaching the BSI Script</div>
+    <div class="card">
+      <ul class="step-list">
+
+        <li class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Make a copy of the customer's BSS</h4>
+            <p>Make an IMPORT copy of the Build Spreadsheet as normal. You will add the script to this copy to prevent possible client access.</p>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Open the Apps Script editor</h4>
+            <p>In the spreadsheet menu, go to <strong>Extensions > Apps Script</strong>. This opens the Apps Script editor in a new tab.</p>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Add the BSI library</h4>
+            <p>In the Apps Script editor, click the <strong>+</strong> icon next to <strong>Libraries</strong> in the left sidebar.</p>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <h4>Enter the BSI Script ID</h4>
+            <p>Paste the following Script ID into the search field and click <strong>Look up</strong>:</p>
+            <div style="background:#1E2430;border:1px solid var(--af-border);border-radius:6px;padding:12px 16px;font-family:monospace;font-size:13px;color:var(--af-blue);margin:10px 0;word-break:break-all;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <span>1tnAsz-hx1iHixiUevrDmeOxHB2lxBC7-47cAkkwKtM4Orc9rkVuHL8u5</span>
+              <button onclick="navigator.clipboard.writeText('1tnAsz-hx1iHixiUevrDmeOxHB2lxBC7-47cAkkwKtM4Orc9rkVuHL8u5').then(() => this.textContent='Copied!').catch(() => {});"
+                style="background:var(--af-dark-3);border:1px solid var(--af-border);color:var(--af-blue);font-size:11px;font-weight:600;padding:4px 12px;border-radius:4px;cursor:pointer;flex-shrink:0;font-family:inherit;">
+                Copy
+              </button>
+            </div>
+            <div class="callout callout-warn" style="margin-top:8px;">
+              <strong>⚠️</strong> This Script ID is unique to BSI. PSI and FSI use different Script IDs - do not interchange them.
+            </div>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">5</div>
+          <div class="step-content">
+            <h4>Select the version and add</h4>
+            <p>Once the library resolves, leave the version set to the latest available (or as directed by your team lead). Click <strong>Add</strong> to attach it to the spreadsheet.</p>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">6</div>
+          <div class="step-content">
+            <h4>Save and verify</h4>
+            <p>Save the Apps Script project. Return to the spreadsheet and reload the page. The <strong>Onboarding API</strong> menu should now appear in the top menu bar, confirming the script is correctly attached.</p>
+            <div class="callout callout-blue" style="margin-top:10px;">
+              <strong>💡</strong> If the Onboarding API menu does not appear after reload, check that the library was saved correctly in the Apps Script editor and that you are the owner of the spreadsheet.
+            </div>
+          </div>
+        </li>
+
+      </ul>
+    </div>
+
+    <div class="section-title">Next Steps</div>
+    <div class="card-grid">
+      <div class="tool-card" onclick="navigate('api-setup')">
+        <div class="tool-card-icon">🔑</div>
+        <div class="tool-card-name">API Connection Setup</div>
+        <div class="tool-card-desc">If credentials have not yet been set up for this customer, complete the one-time API connection setup first.</div>
+      </div>
+      <div class="tool-card" onclick="navigate('bsi-technical')">
+        <div class="tool-card-icon">⚙️</div>
+        <div class="tool-card-name">BSI Technical Guide</div>
+        <div class="tool-card-desc">With the script attached and credentials ready, proceed to the Technical Guide to begin the load workflow.</div>
+      </div>
+    </div>
+  `;
+}
+
+
 
 // ============================================================
 // PAGE: BSI ROOT
@@ -202,9 +768,14 @@ function pagBSI() {
     ${bc([{label:'Home',page:'home'},{label:'BSI'}])}
     <div class="page-header">
       <h1><span>BSI</span> - Build Spreadsheet Integration</h1>
-      <p>Creates net-new records in AppFolio in bulk via the AppFolio Bulk API. The foundation of the onboarding data load.</p>
+      <p>Creates net-new records in AppFolio in bulk via the Onboarding API. The foundation of the onboarding data load.</p>
     </div>
     <div class="card-grid">
+      <div class="tool-card" onclick="navigate('bsi-setup')">
+        <div class="tool-card-icon">🔑</div>
+        <div class="tool-card-name">Setup</div>
+        <div class="tool-card-desc">Attach the BSI script to a client spreadsheet. Required once per project before any loading can begin.</div>
+      </div>
       <div class="tool-card" onclick="navigate('bsi-overview')">
         <div class="tool-card-icon">📋</div>
         <div class="tool-card-name">Overview</div>
@@ -213,7 +784,7 @@ function pagBSI() {
       <div class="tool-card" onclick="navigate('bsi-technical')">
         <div class="tool-card-icon">⚙️</div>
         <div class="tool-card-name">Technical Guide</div>
-        <div class="tool-card-desc">Full step-by-step workflow — Setup, Prep, Load, Sync, and Audit with field-level detail.</div>
+        <div class="tool-card-desc">Full step-by-step workflow - Setup, Prep, Load, Sync, and Audit with field-level detail.</div>
       </div>
       <div class="tool-card" onclick="navigate('bsi-onepager')">
         <div class="tool-card-icon">📄</div>
@@ -236,12 +807,12 @@ function pagBSIOverview() {
     </div>
 
     <div class="callout callout-blue">
-      <strong>Core value:</strong> BSI tracks every row individually. Rows marked Success are permanently skipped on future runs — only new or fixed rows get processed. You can add records mid-project, fix errors and re-run, or load object types across multiple sessions without touching anything already in AppFolio.
+      <strong>Core value:</strong> BSI tracks every row individually. Rows marked Success are permanently skipped on future runs - only new or fixed rows get processed. You can add records mid-project, fix errors and re-run, or load object types across multiple sessions without touching anything already in AppFolio.
     </div>
 
     <div class="card" style="margin-bottom:16px;">
       <h2>What BSI Does</h2>
-      <p>BSI is a Google Sheets sidebar that connects directly to the AppFolio Bulk API to create onboarding records in volume. It handles the full set of entities needed to stand up a new AppFolio environment — from bank accounts through to tenant occupancies and recurring charges. Each load is additive and non-destructive: records already in AppFolio are never re-sent.</p>
+      <p>BSI is a Google Sheets sidebar that connects directly to the Onboarding API to create onboarding records in volume. It handles the full set of entities needed to stand up a new AppFolio environment - from bank accounts through to tenant occupancies and recurring charges. Each load is additive and non-destructive: records already in AppFolio are never re-sent.</p>
     </div>
 
     <div class="section-title">Supported Objects</div>
@@ -274,18 +845,6 @@ function pagBSIOverview() {
         <span class="s-pill s-pending">Pending</span> Submitted to AppFolio asynchronously - run Sync to resolve
       </div>
     </div>
-
-    <div class="section-title">Who Uses It</div>
-    <div class="card-grid">
-      <div class="card">
-        <h3>🧭 Onboarding Managers</h3>
-        <p>Run Prep - Load - Sync cycles, monitor progress via the dashboard pill counts, and use the Audit tab to review outcomes by run.</p>
-      </div>
-      <div class="card">
-        <h3>⚙️ Technical Users</h3>
-        <p>Manage field mappings, review raw API responses, handle error rows, and use the debug log for deeper troubleshooting.</p>
-      </div>
-    </div>
   `;
 }
 
@@ -304,10 +863,13 @@ function pagBSITechnical() {
       <strong>Before you begin:</strong> BSI sends exactly what is in the sheet. Source data must be cleaned and formatted before running Prep. Errors in source data result in API rejections or bad records in AppFolio.
     </div>
 
+    <div class="callout callout-warn">
+      <strong>Before you begin:</strong> Upload the Chart of Accounts via the Spreadsheet Import as usual.
+    </div>
+
     <div class="card">
       <div class="section-title">Step-by-Step Workflow</div>
       <ul class="step-list">
-
         <li class="step-item">
           <div class="step-num">1</div>
           <div class="step-content">
@@ -315,25 +877,22 @@ function pagBSITechnical() {
             <p>Open the AppFolio Load Tool sidebar via the <em>Onboarding API</em> menu. Navigate to the Setup tab and enter your API credentials (Developer ID, Client ID, Client Secret). Select your target environment - IMPORT for testing, LIVE for production. The sidebar header will confirm the connected company name once credentials are saved.</p>
             <ul>
               <li>Always confirm the environment label before running any load</li>
-              <li>GL Accounts must be synced from AppFolio before loading Recurring Charges</li>
+              <li>GL Accounts must be uploaded and synced from AppFolio before loading Properties or Recurring Charges</li>
               <li>Use the Setup checklist to confirm all pre-load steps are complete</li>
             </ul>
           </div>
         </li>
-
         <li class="step-item">
           <div class="step-num">2</div>
           <div class="step-content">
             <h4>Prepare Data in Sheet Tabs</h4>
-            <p>Each object type has its own sheet tab (Banks, Owners, Properties, etc.). Populate rows with source data. Column headers must match the expected field names exactly. Reference IDs are auto-generated during Prep for most objects.</p>
+            <p>Each object type has its own sheet tab (Banks, Owners, Properties, etc.). Populate rows with source data. Column headers must match the expected field names exactly. Reference IDs are auto-generated during Prep.</p>
             <ul>
-              <li>SFR units are auto-created by AppFolio - the tool PATCHes marketing info only</li>
               <li>Recurring Charges are inline columns on the Tenants sheet, not a separate tab</li>
-              <li>Owner and Occupancy late fees use dedicated status columns on their respective sheets</li>
+              <li>Owners and Late Fees use dedicated status columns on their respective tabs</li>
             </ul>
           </div>
         </li>
-
         <li class="step-item">
           <div class="step-num">3</div>
           <div class="step-content">
@@ -346,36 +905,32 @@ function pagBSITechnical() {
             </ul>
           </div>
         </li>
-
         <li class="step-item">
           <div class="step-num">4</div>
           <div class="step-content">
             <h4>Load Order - Dependencies Must Be Respected</h4>
             <p>Objects must be loaded in sequence because each step depends on IDs from the prior step. The sidebar enforces this with dependency gates - Load buttons are disabled until dependencies are met.</p>
             <ul>
-              <li>Banks first - Properties require bank account IDs</li>
+              <li>GL Accounts synced first - Properties require the IDs</li>
+              <li>Banks - Properties require bank account IDs</li>
               <li>Owners + Properties (both loaded and synced) before Owner Assignments</li>
               <li>Properties before Unit Types, Unit Types before Units</li>
               <li>Units before Tenants - Tenants must be synced before Recurring Charges and Occupancy Late Fees</li>
-              <li>GL Accounts synced before Recurring Charges</li>
-              <li>Properties loaded before Property Late Fees</li>
             </ul>
           </div>
         </li>
-
         <li class="step-item">
           <div class="step-num">5</div>
           <div class="step-content">
             <h4>Load - Send to AppFolio</h4>
             <p>Click Load for each object type. Only Ready rows are sent, in batches of 40 records per API call. Results are written back to the sheet after each batch - a failure in one batch does not affect others. Success rows will never be re-sent.</p>
             <ul>
-              <li>Rows are stamped Success (green), Error (red), or Pending (amber) immediately after each batch</li>
+              <li>Rows are stamped Success (green), Error (red), or Pending (yellow) immediately after each batch</li>
               <li>Large loads can be safely interrupted - completed batches are already written</li>
               <li>Error rows stay editable - fix the source data and re-Prep to retry</li>
             </ul>
           </div>
         </li>
-
         <li class="step-item">
           <div class="step-num">6</div>
           <div class="step-content">
@@ -388,7 +943,6 @@ function pagBSITechnical() {
             </ul>
           </div>
         </li>
-
         <li class="step-item">
           <div class="step-num">7</div>
           <div class="step-content">
@@ -401,7 +955,6 @@ function pagBSITechnical() {
             </ul>
           </div>
         </li>
-
       </ul>
     </div>
 
@@ -420,7 +973,7 @@ function pagBSITechnical() {
           <div class="step-num" style="background:#fff2cc;color:#744210;">!</div>
           <div class="step-content">
             <h4>Release Occupancy Lock</h4>
-            <p>Clears a stuck mutex if a Tenants load or sync was interrupted mid-run and the sidebar shows steps as locked.</p>
+            <p>Clears a stuck Tenants load or sync was interrupted mid-run and the sidebar shows steps as locked.</p>
           </div>
         </li>
         <li class="step-item">
@@ -443,14 +996,13 @@ function pagBSIOnePager() {
     ${bc([{label:'Home',page:'home'},{label:'BSI',page:'bsi'},{label:'One-Pager'}])}
     <div class="page-header">
       <h1>BSI <span>One-Pager</span></h1>
-      <p>A concise reference for OMs and partners — capabilities, load order, and what BSI cannot do.</p>
+      <p>A concise reference for OMs and partners - capabilities, load order, and what BSI cannot do.</p>
     </div>
     <div class="onepager-wrap">
       <div class="onepager-toolbar">
-        <span>📄 BSI One-Pager — Build Spreadsheet Integration</span>
+        <span>📄 BSI One-Pager - Build Spreadsheet Integration</span>
       </div>
       <div class="onepager-content">
-
         <div class="callout callout-blue" style="margin-bottom:20px;">
           <strong>Core value:</strong> BSI tracks every row individually. Success rows are permanently skipped - only new or fixed rows get processed. Add records mid-project, fix errors and re-run, or load object types across multiple sessions without affecting what is already in AppFolio.
         </div>
@@ -470,12 +1022,12 @@ function pagBSIOnePager() {
         <div class="section-title" style="margin-top:20px;">Required Load Order</div>
         <div class="card" style="box-shadow:none;">
           <ul class="step-list" style="padding:0;">
-            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">1</div><div class="step-content"><h4>Banks</h4><p style="font-size:12px;">Must exist before Properties can be linked to bank accounts.</p></div></li>
-            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">2</div><div class="step-content"><h4>Owners + Properties (both required before Owner Assignments)</h4><p style="font-size:12px;">Both must be loaded and synced. Owner Assignments require IDs from both.</p></div></li>
-            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">3</div><div class="step-content"><h4>Properties - Unit Types - Units</h4><p style="font-size:12px;">Each step requires the prior object's AppFolio ID.</p></div></li>
-            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">4</div><div class="step-content"><h4>Units - Tenants (+ Sync) - Recurring Charges</h4><p style="font-size:12px;">OccupancyId from Tenant Sync is required before Recurring Charges can be loaded.</p></div></li>
-            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">5</div><div class="step-content"><h4>Late Fees (property or occupancy level)</h4><p style="font-size:12px;">Property Late Fees require a loaded Property. Occupancy Late Fees require a synced Tenant (OccupancyId).</p></div></li>
-            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">6</div><div class="step-content"><h4>GL Account Sync before Recurring Charges</h4><p style="font-size:12px;">GL UUIDs are stored as cell Notes during sync and resolved at Prep time.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">1</div><div class="step-content"><h4>GL Account Sync</h4><p style="font-size:12px;">Must be completed before anything else. GL UUIDs are stored as cell Notes and referenced throughout Prep - Properties with Additional Cash Accounts and Recurring Charges both depend on this.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">2</div><div class="step-content"><h4>Banks</h4><p style="font-size:12px;">Required before Properties. Each property must be linked to an Operating Cash and Escrow bank account using IDs generated from this load.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">3</div><div class="step-content"><h4>Owners + Properties (independent, but both needed before Owner Assignments)</h4><p style="font-size:12px;">Owners and Properties can be loaded in parallel - neither depends on the other. However, both must be fully loaded and synced before Owner Assignments can run, since assignments require an AppFolio Owner ID and a Property ID.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">4</div><div class="step-content"><h4>Properties - Unit Types - Units</h4><p style="font-size:12px;">Unit Types and Units are children of Properties - they cannot exist without a parent Property ID. Unit Types must also be loaded before Units, as Units reference the Unit Type for classification.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">5</div><div class="step-content"><h4>Units - Tenants (+ Sync) - Recurring Charges</h4><p style="font-size:12px;">Tenants are linked to a specific Unit at load time. After loading, Tenants must be synced to resolve the OccupancyId - this ID is required before Recurring Charges can be prepped or loaded.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">6</div><div class="step-content"><h4>Late Fees (property or occupancy level)</h4><p style="font-size:12px;">Property Late Fees require a loaded Property ID. Occupancy Late Fees require a synced Tenant (OccupancyId). Both can be run independently once their parent is resolved.</p></div></li>
           </ul>
         </div>
 
