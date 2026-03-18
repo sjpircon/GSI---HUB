@@ -8,7 +8,7 @@ function doGet(e) {
   const template = HtmlService.createTemplateFromFile('Index');
   template.page = page;
   return template.evaluate()
-    .setTitle('Spreadsheet Integration Hub')
+    .setTitle('GSI Hub')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
@@ -16,4 +16,10 @@ function doGet(e) {
 // ── Include helper for CSS/JS partials ──────────────────────
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+// ── Returns the deployed web app URL ────────────────────────
+// Used by BSI/PSI sidebar buttons to open the Hub at a specific page
+function getHubUrl() {
+  return ScriptApp.getService().getUrl();
 }
