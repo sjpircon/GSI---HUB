@@ -36,8 +36,9 @@
         </a>
         <div class="nav-children" id="bsi-group">
           <a class="nav-child" data-page="bsi-setup"      onclick="navigate('bsi-setup')">Setup</a>
-          <a class="nav-child" data-page="bsi-overview"   onclick="navigate('bsi-overview')">One-Pager</a>
+          
           <a class="nav-child" data-page="bsi-technical"  onclick="navigate('bsi-technical')">Technical Guide</a>
+          <a class="nav-child" data-page="bsi-onepager"   onclick="navigate('bsi-onepager')">One-Pager</a>
           <a class="nav-child" data-page="bsi-feedback"   onclick="navigate('bsi-feedback')">Feedback</a>
         </div>
       </div>
@@ -48,8 +49,8 @@
           <span class="nav-caret" id="psi-caret">›</span>
         </a>
         <div class="nav-children" id="psi-group">
-          <a class="nav-child" data-page="psi-overview"   onclick="navigate('psi-overview')">One-Pager</a>
           <a class="nav-child" data-page="psi-technical"  onclick="navigate('psi-technical')">Technical Guide</a>
+          <a class="nav-child" data-page="psi-onepager"   onclick="navigate('psi-onepager')">One-Pager</a>
           <a class="nav-child" data-page="psi-feedback"   onclick="navigate('psi-feedback')">Feedback</a>
         </div>
       </div>
@@ -59,6 +60,20 @@
           <span class="nav-icon">📊</span> FSI
           <span class="nav-badge-soon">Soon</span>
         </a>
+      </div>
+
+      <div class="nav-group-label" style="margin-top:18px;">Community</div>
+
+      <div class="nav-group">
+        <a class="nav-item nav-parent" data-page="updates" onclick="toggleGroup('updates-group'); navigate('updates')">
+          <span class="nav-icon">📢</span> Updates
+          <span class="nav-caret" id="updates-caret">›</span>
+        </a>
+        <div class="nav-children" id="updates-group">
+          <a class="nav-child" data-page="updates-changelog"  onclick="navigate('updates-changelog')">What's New</a>
+          <a class="nav-child" data-page="updates-issues"     onclick="navigate('updates-issues')">Known Issues</a>
+          <a class="nav-child" data-page="updates-requests"   onclick="navigate('updates-requests')">Feature Requests</a>
+        </div>
       </div>
     </nav>
 
