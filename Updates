@@ -1,0 +1,379 @@
+// ============================================================
+// UPDATES.GS — Hub Web App
+// Handles:
+//   • Known Issues   — live feed from the escalation log tabs
+//   • Feature Discussions — comments + account tags per feature
+//   • Feature Requests    — new feature suggestions
+//
+// REQUIRED SCRIPT PROPERTIES (same as Escalation.gs):
+//   ESCALATION_SHEET_ID  — ID of the shared Google Sheet
+//
+// Reads from existing tabs (columns looked up by header name):
+//   BSI Escalation Log, PSI Escalation Log, FSI Escalation Log
+//
+// Sheet tabs auto-created on first use:
+//   Feature Comments   — one row per comment (Feature ID, Comment, Account, Submitted By, Timestamp)
+//   Feature Requests   — one row per new request (Title, Description, Tool, Submitted By, Timestamp)
+// ============================================================
+
+// ── Known Issues source tabs ──────────────────────────────────
+const KI_TABS = [
+  { name: 'BSI Escalation Log', tool: 'BSI' },
+  { name: 'PSI Escalation Log', tool: 'PSI' },
+  { name: 'FSI Escalation Log', tool: 'FSI' }
+];
+
+const FEATURE_COMMENTS_TAB  = 'Feature Comments';
+const FEATURE_REQUESTS_TAB  = 'Feature Requests';
+
+const FEATURE_COMMENTS_HEADERS  = ['Feature ID', 'Comment', 'Account', 'Submitted By', 'Timestamp'];
+const FEATURE_REQUESTS_HEADERS  = ['Title', 'Description', 'Tool', 'Submitted By', 'Timestamp'];
+
+
+// ── Helper: get or create a sheet tab with styled headers ────
+function _getOrCreateTab_(ss, tabName, headers) {
+  let sheet = ss.getSheetByName(tabName);
+  if (!sheet) {
+    sheet = ss.insertSheet(tabName);
+    const hdrRange = sheet.getRange(1, 1, 1, headers.length);
+    hdrRange.setValues([headers])
+            .setFontWeight('bold')
+            .setBackground('#1E2430')
+            .setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+// ── Helper: open the shared sheet ────────────────────────────
+function _getSharedSheet_() {
+  const sheetId = PropertiesService.getScriptProperties()
+                    .getProperty('ESCALATION_SHEET_ID');
+  if (!sheetId) throw new Error(
+    'ESCALATION_SHEET_ID is not set. ' +
+    'Add it under Hub Apps Script → Project Settings → Script Properties.'
+  );
+  return SpreadsheetApp.openById(sheetId);
+}
+
+
+// ── submitFeatureComment ─────────────────────────────────────
+//
+// Appends a comment + account tag to the Feature Comments tab.
+// No deduplication — each post is a distinct contribution.
+//
+// @param  {string} featureId   — stable ID (e.g. 'feat-fsi')
+// @param  {string} comment     — the comment text
+// @param  {string} accountTag  — customer / account name for context
+// @return {object}             — { success: true }
+// ─────────────────────────────────────────────────────────────
+function submitFeatureComment(featureId, comment, accountTag) {
+  const ss    = _getSharedSheet_();
+  const sheet = _getOrCreateTab_(ss, FEATURE_COMMENTS_TAB, FEATURE_COMMENTS_HEADERS);
+
+  const submittedBy = Session.getActiveUser().getEmail();
+
+  sheet.appendRow([
+    String(featureId  || '').trim(),
+    String(comment    || '').trim(),
+    String(accountTag || '').trim(),
+    submittedBy,
+    new Date().toISOString()
+  ]);
+
+  return { success: true, submittedBy: submittedBy };
+}
+
+
+// ── getFeatureCommentCounts ───────────────────────────────────
+//
+// Returns a summary of discussion activity for all features:
+// total comment count and unique account names per feature.
+// Used to populate the card summaries on page load.
+//
+// @return {object} — { featureId: { count: number, accounts: string[] } }
+// ─────────────────────────────────────────────────────────────
+function getFeatureCommentCounts() {
+  let ss;
+  try {
+    ss = _getSharedSheet_();
+  } catch (e) {
+    return {};
+  }
+
+  const sheet = ss.getSheetByName(FEATURE_COMMENTS_TAB);
+  if (!sheet) return {};
+
+  const rows   = sheet.getDataRange().getValues();
+  const result = {};
+
+  for (let i = 1; i < rows.length; i++) {
+    const fid  = String(rows[i][0] || '').trim();
+    const acct = String(rows[i][2] || '').trim();
+    if (!fid) continue;
+    if (!result[fid]) result[fid] = { count: 0, accounts: [] };
+    result[fid].count++;
+    if (acct && result[fid].accounts.indexOf(acct) === -1) {
+      result[fid].accounts.push(acct);
+    }
+  }
+
+  return result;
+}
+
+
+// ── getFeatureComments ────────────────────────────────────────
+//
+// Returns all comments for a single feature, ordered oldest first.
+// Called lazily when the user expands a feature's discussion panel.
+//
+// @param  {string} featureId
+// @return {object[]} — [{ comment, account, submittedBy, timestamp }]
+// ─────────────────────────────────────────────────────────────
+function getFeatureComments(featureId) {
+  let ss;
+  try {
+    ss = _getSharedSheet_();
+  } catch (e) {
+    return [];
+  }
+
+  const sheet = ss.getSheetByName(FEATURE_COMMENTS_TAB);
+  if (!sheet) return [];
+
+  const rows     = sheet.getDataRange().getValues();
+  const comments = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0] || '').trim() !== featureId) continue;
+    comments.push({
+      comment:     rows[i][1],
+      account:     rows[i][2],
+      submittedBy: rows[i][3],
+      timestamp:   String(rows[i][4] || '')
+    });
+  }
+
+  return comments;
+}
+
+
+// ── getFeatureBankItems ───────────────────────────────────────
+//
+// Reads the Feature Bank tab and returns rows where Show in Hub = TRUE.
+// Columns are looked up by header name — safe against reordering.
+//
+// Expected columns: Feature ID, Title, Description, Tool, Status, Emoji, Show in Hub
+//
+// @return {object[]} — [{ id, title, description, tool, status, emoji }]
+// ─────────────────────────────────────────────────────────────
+function getFeatureBankItems() {
+  let ss;
+  try {
+    ss = _getSharedSheet_();
+  } catch (e) {
+    return [];
+  }
+
+  const sheet = ss.getSheetByName('Feature Bank');
+  if (!sheet) return [];
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+
+  const headers = data[0].map(function(h) { return String(h).trim(); });
+  const col = {
+    featureId:   headers.indexOf('Feature ID'),
+    title:       headers.indexOf('Title'),
+    description: headers.indexOf('Description'),
+    tool:        headers.indexOf('Tool'),
+    status:      headers.indexOf('Status'),
+    emoji:       headers.indexOf('Emoji'),
+    showInHub:   headers.indexOf('Show in Hub')
+  };
+
+  const items = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+
+    // Only include rows where Show in Hub is checked
+    if (col.showInHub === -1 || row[col.showInHub] !== true) continue;
+
+    var featureId = col.featureId !== -1 ? String(row[col.featureId] || '').trim() : '';
+    if (!featureId) continue;
+
+    items.push({
+      id:          featureId,
+      title:       col.title       !== -1 ? String(row[col.title]       || '').trim() : '',
+      description: col.description !== -1 ? String(row[col.description] || '').trim() : '',
+      tool:        col.tool        !== -1 ? String(row[col.tool]        || '').trim() : '',
+      status:      col.status      !== -1 ? String(row[col.status]      || '').trim() : '',
+      emoji:       col.emoji       !== -1 ? String(row[col.emoji]       || '').trim() : '💡'
+    });
+  }
+
+  return items;
+}
+
+
+// ── getChangelog ─────────────────────────────────────────────
+//
+// Reads the Changelog tab and returns entries grouped by version,
+// in sheet row order (put newest version at the top of the sheet).
+//
+// Expected columns: Version, Release Date, Tag, Type, Description,
+//                   Reference IDs, Show in Hub
+//
+// Reference IDs is a comma-separated list of submission/feature IDs
+// (e.g. "BSI-002, FEAT-001") used to link entries to other Hub pages.
+//
+// @return {object[]} — [{version, date, tag, entries: [{type, description, refIds}]}]
+// ─────────────────────────────────────────────────────────────
+function getChangelog() {
+  let ss;
+  try {
+    ss = _getSharedSheet_();
+  } catch (e) {
+    return [];
+  }
+
+  const sheet = ss.getSheetByName('Changelog');
+  if (!sheet) return [];
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+
+  const headers = data[0].map(function(h) { return String(h).trim(); });
+  const col = {
+    version:   headers.indexOf('Version'),
+    date:      headers.indexOf('Release Date'),
+    tag:       headers.indexOf('Tag'),
+    type:      headers.indexOf('Type'),
+    desc:      headers.indexOf('Description'),
+    refIds:    headers.indexOf('Reference IDs'),
+    showInHub: headers.indexOf('Show in Hub')
+  };
+
+  const versionsMap   = {};
+  const versionsOrder = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+
+    if (col.showInHub !== -1 && row[col.showInHub] !== true) continue;
+
+    // Version — keep as text; if Sheets stored it as a number (e.g. 1.0 → 1),
+    // preserve one decimal place so "1.0" doesn't silently become "1".
+    var rawVer  = col.version !== -1 ? row[col.version] : '';
+    var version = typeof rawVer === 'number'
+      ? (Number.isInteger(rawVer) ? rawVer.toFixed(1) : String(rawVer))
+      : String(rawVer || '').trim();
+    if (!version) continue;
+
+    // Date — format Date objects; fall back to plain string if already text.
+    var rawDate = col.date !== -1 ? row[col.date] : '';
+    var date    = rawDate instanceof Date
+      ? Utilities.formatDate(rawDate, Session.getScriptTimeZone(), 'MMM d, yyyy')
+      : String(rawDate || '').trim();
+
+    if (!versionsMap[version]) {
+      versionsMap[version] = {
+        version: version,
+        date:    date,
+        tag:     col.tag !== -1 ? String(row[col.tag] || '').trim() : '',
+        entries: []
+      };
+      versionsOrder.push(version);
+    }
+
+    var rawRefs = col.refIds !== -1 ? String(row[col.refIds] || '').trim() : '';
+    var refIds  = rawRefs
+      ? rawRefs.split(',').map(function(r) { return r.trim(); }).filter(Boolean)
+      : [];
+
+    versionsMap[version].entries.push({
+      type:        col.type !== -1 ? String(row[col.type] || '').trim() : '',
+      description: col.desc !== -1 ? String(row[col.desc] || '').trim() : '',
+      refIds:      refIds
+    });
+  }
+
+  return versionsOrder.map(function(v) { return versionsMap[v]; });
+}
+
+
+// ── getKnownIssues ────────────────────────────────────────────
+//
+// Reads BSI, PSI, and FSI Escalation Log tabs and returns rows
+// that should surface on the Hub Known Issues page.
+//
+// A row is included when ALL of the following are true:
+//   • Issue Type  = 'Bug / Script Error'
+//   • Show in Hub = TRUE  (checkbox column)
+//   • Status      is not blank and not 'New'
+//
+// Columns are looked up by header name — safe against reordering.
+// Customer Name and internal fields are never returned.
+//
+// @return {object[]} — [{ tool, status, title, description, workaround }]
+// ─────────────────────────────────────────────────────────────
+function getKnownIssues() {
+  let ss;
+  try {
+    ss = _getSharedSheet_();
+  } catch (e) {
+    return [];
+  }
+
+  const issues = [];
+
+  KI_TABS.forEach(function(t) {
+    const sheet = ss.getSheetByName(t.name);
+    if (!sheet) return;
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return;
+
+    // Map header names → column indices (trim whitespace for safety)
+    const headers = data[0].map(function(h) { return String(h).trim(); });
+    const col = {
+      issueType:   headers.indexOf('Issue Type'),
+      status:      headers.indexOf('Status'),
+      showInHub:   headers.indexOf('Show in Hub'),
+      hubTitle:    headers.indexOf('Hub Title'),
+      hubDesc:     headers.indexOf('Hub Description'),
+      hubWA:        headers.indexOf('Hub Workaround'),
+      submissionId: headers.indexOf('Submission ID')
+    };
+
+    // Skip tab if required columns are missing
+    if (col.issueType === -1 || col.status === -1 || col.showInHub === -1) return;
+
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+
+      // Filter: Bug / Script Error and Data Load Failure only
+      var issueType = String(row[col.issueType] || '').trim();
+      if (issueType !== 'Bug / Script Error' && issueType !== 'Data Load Failure') continue;
+
+      // Filter: Show in Hub must be TRUE (checkbox)
+      if (row[col.showInHub] !== true) continue;
+
+      // Filter: Status must exist and not be 'New'
+      var status = String(row[col.status] || '').trim();
+      if (!status || status.toLowerCase() === 'new') continue;
+
+      issues.push({
+        id:          col.submissionId !== -1 ? String(row[col.submissionId] || '').trim() : '',
+        tool:        t.tool,
+        status:      status,
+        title:       col.hubTitle !== -1 ? String(row[col.hubTitle] || '').trim() : '',
+        description: col.hubDesc  !== -1 ? String(row[col.hubDesc]  || '').trim() : '',
+        workaround:  col.hubWA    !== -1 ? String(row[col.hubWA]    || '').trim() : ''
+      });
+    }
+  });
+
+  return issues;
+}
