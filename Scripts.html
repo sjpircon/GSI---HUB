@@ -4,6 +4,9 @@
 // ============================================================
 
 let currentPage = 'home';
+let _pendingIssueHighlight     = null;
+let _pendingChangelogHighlight = null;
+let _pendingFeatureHighlight   = null;
 
 // ── Navigation ───────────────────────────────────────────────
 function navigate(page) {
@@ -20,24 +23,49 @@ function updateActiveNav(page) {
     if (el.getAttribute('data-page') === page) el.classList.add('active');
   });
   const childGroups = {
-    'bsi': 'bsi-group', 'bsi-setup': 'bsi-group', 'bsi-overview': 'bsi-group',
+    'bsi': 'bsi-group', 'bsi-setup': 'bsi-group',
     'bsi-technical': 'bsi-group', 'bsi-onepager': 'bsi-group', 'bsi-feedback': 'bsi-group',
-    'psi': 'psi-group', 'psi-setup': 'psi-group', 'psi-overview': 'psi-group',
-    'psi-technical': 'psi-group', 'psi-onepager': 'psi-group', 'psi-feedback': 'psi-group'
+    'psi': 'psi-group', 'psi-setup': 'psi-group',
+    'psi-technical': 'psi-group', 'psi-onepager': 'psi-group', 'psi-feedback': 'psi-group',
+    'updates': 'updates-group', 'updates-changelog': 'updates-group',
+    'updates-issues': 'updates-group', 'updates-requests': 'updates-group'
   };
-  const carets = { 'bsi-group': 'bsi-caret', 'psi-group': 'psi-caret' };
+  const carets = { 'bsi-group': 'bsi-caret', 'psi-group': 'psi-caret', 'updates-group': 'updates-caret' };
   const groupId = childGroups[page];
   if (groupId) {
     const group = document.getElementById(groupId);
     const caret = document.getElementById(carets[groupId]);
-    if (group) group.classList.add('open');
-    if (caret) caret.classList.add('open');
+    // Only force-open for child pages — parent pages manage their own
+    // open/close state via toggleGroup so clicking them can collapse the menu.
+    const parentPages = ['bsi', 'psi', 'updates'];
+    if (!parentPages.includes(page)) {
+      if (group) group.classList.add('open');
+      if (caret) caret.classList.add('open');
+    }
   }
+}
+
+// From What's New → Known Issues: highlight a bug/escalation card
+function navigateToIssue(id) {
+  _pendingIssueHighlight = id;
+  navigate('updates-issues');
+}
+
+// From Known Issues or Feature Requests → What's New: highlight changelog entries referencing this ID
+function navigateToChangelog(id) {
+  _pendingChangelogHighlight = id;
+  navigate('updates-changelog');
+}
+
+// From What's New → Feature Requests: highlight a feature card
+function navigateToFeature(id) {
+  _pendingFeatureHighlight = id;
+  navigate('updates-requests');
 }
 
 function toggleGroup(groupId) {
   const group = document.getElementById(groupId);
-  const caretMap = { 'bsi-group': 'bsi-caret', 'psi-group': 'psi-caret' };
+  const caretMap = { 'bsi-group': 'bsi-caret', 'psi-group': 'psi-caret', 'updates-group': 'updates-caret' };
   const caret = document.getElementById(caretMap[groupId]);
   if (!group) return;
   group.classList.toggle('open');
@@ -53,16 +81,20 @@ function renderPage(page) {
     case 'feedback':      container.innerHTML = pagFeedback();     break;
     case 'bsi-feedback':  container.innerHTML = pagBSIFeedback();  break;
     case 'psi-feedback':  container.innerHTML = pagPSIFeedback();  break;
-    case 'bsi':           container.innerHTML = pagBSI();          break;
     case 'bsi-setup':     container.innerHTML = pagBSISetup();     break;
-    case 'bsi-overview':  container.innerHTML = pagBSIOverview();  break;
-    case 'bsi-onepager':  container.innerHTML = pagBSIOverview();  break;
+    //case 'bsi-overview':  container.innerHTML = pagBSIOverview();  break;
     case 'bsi-technical': container.innerHTML = pagBSITechnical(); break;
+    case 'bsi-onepager':  container.innerHTML = pagBSIOnePager();  break;
+    case 'bsi':           container.innerHTML = pagBSI();          break;
     case 'psi':           container.innerHTML = pagPSI();          break;
-    case 'psi-overview':  container.innerHTML = pagPSIOverview();  break;
-    case 'psi-onepager':  container.innerHTML = pagPSIOverview();  break;
+    //case 'psi-overview':  container.innerHTML = pagPSIOverview();  break;
     case 'psi-technical': container.innerHTML = pagPSITechnical(); break;
-    default:              container.innerHTML = pagHome();
+    case 'psi-onepager':      container.innerHTML = pagPSIOnePager();      break;
+    case 'updates':           container.innerHTML = pagUpdates();          break;
+    case 'updates-changelog': container.innerHTML = pagChangelog();        break;
+    case 'updates-issues':    container.innerHTML = pagKnownIssues();      break;
+    case 'updates-requests':  container.innerHTML = pagFeatureRequests();  break;
+    default:                  container.innerHTML = pagHome();
   }
 }
 
@@ -231,11 +263,11 @@ const ESC_CATEGORIES = {
 };
 
 // Escalation state — one set shared, reset on each page navigate
-let _escTool = null, _escActiveCat = null, _escOpenStep = null, _escSubmitted = false, _escSubmitting = false;
+let _escTool = null, _escActiveCat = null, _escOpenStep = null, _escSubmitted = false, _escSubmitting = false, _escSubmissionId = null;
 
 function _escReset(tool) {
   _escTool = tool; _escActiveCat = null; _escOpenStep = null;
-  _escSubmitted = false; _escSubmitting = false;
+  _escSubmitted = false; _escSubmitting = false; _escSubmissionId = null;
 }
 
 function _escCatList() {
@@ -303,6 +335,7 @@ function _escRenderStep(step, i, c) {
         ${_escSubmitted
           ? `<div style="background:#f0fff4;border:1.5px solid #68d391;border-radius:8px;padding:12px 16px;font-size:13px;color:#276749;font-weight:600;">
                ✅ Submitted! A lead will review your ${isFb ? 'feedback' : 'report'} shortly.
+               ${_escSubmissionId ? `<span style="display:block;margin-top:6px;font-size:12px;font-weight:400;color:#276749;">Reference ID: <strong>${_escSubmissionId}</strong></span>` : ''}
              </div>`
           : _escRenderForm(c)}
       </div>`;
@@ -386,7 +419,7 @@ function _escSubmit() {
   google.script.run
     .withSuccessHandler(() => {
       google.script.run
-        .withSuccessHandler(() => { _escSubmitting = false; _escSubmitted = true; _escRenderFlow(); })
+        .withSuccessHandler((res) => { _escSubmitting = false; _escSubmitted = true; _escSubmissionId = (res && res.submissionId) || null; _escRenderFlow(); })
         .withFailureHandler(e => { _escSubmitting = false; btn.disabled = false; btn.textContent = 'Submit →'; errEl.textContent = 'Submission failed: ' + (e.message || 'Unknown error.'); errEl.style.display = 'block'; })
         .submitEscalation();
     })
@@ -504,13 +537,14 @@ function pagAPISetup() {
       <h1><span>API Connection</span> Setup</h1>
       <p>One-time setup per customer. Must be completed by the Data Migration Specialist before any tool can connect to AppFolio.</p>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-        <span class="hero-pill" style="background:#eff6ff;border:1px solid #93c5fd;color:#1e40af;">Owner: Data Migration Specialists</span>
+        <span class="hero-pill" style="background:#f0fdf4;border:1px solid #86efac;color:#166534;">Version 1.0 - Phase 1 Pilot</span>
+        <span class="hero-pill" style="background:#eff6ff;border:1px solid #93c5fd;color:#1e40af;">Audience: Data Migration Specialists</span>
         <span class="hero-pill" style="background:#fefce8;border:1px solid #fde047;color:#854d0e;">Last Updated: Mar 13, 2026</span>
       </div>
     </div>
 
     <div class="callout callout-blue">
-      <strong>What is this?</strong> Before any data can be loaded into AppFolio using BSI or PSI, the Onboarding API must be connected and credentialed for each customer. This process is completed <strong>once per environment (LIVE and IMPORT)</strong> per customer project and is performed by the Data Migration Specialist.
+      <strong>What is this?</strong> Before any data can be loaded into AppFolio using GSI, the Onboarding API must be connected and credentialed for each customer. This process is completed <strong>once per environment (LIVE / IMPORT)</strong> per customer project and is performed by the Data Migration Specialist.
     </div>
 
     <div class="section-title">Overview</div>
@@ -650,11 +684,11 @@ function pagBSISetup() {
     ${bc([{label:'Home',page:'home'},{label:'BSI',page:'bsi'},{label:'Setup'}])}
     <div class="page-header">
       <h1>BSI <span>Setup</span></h1>
-      <p>Required before BSI can be used on a client spreadsheet. Completed by the Data Migration Specialist.</p>
+      <p>Required before BSI can be used on a client project. Completed by the Data Migration Specialist each time a new spreadsheet is created.</p>
     </div>
 
     <div class="callout callout-blue">
-      <strong>When to do this:</strong> Every time a client is ready for IMPORT, the BSI script must be attached to the customer's IMPORT spreadsheet. This does not carry over between clients or spreadsheets.
+      <strong>When to do this:</strong> Every time a new Build Spreadsheet is created for a client project, the BSI script must be attached to that spreadsheet. This is a per-project task - it does not carry over between clients or spreadsheets.
     </div>
 
     <div class="section-title">Prerequisites</div>
@@ -666,7 +700,7 @@ function pagBSISetup() {
         </li>
         <li style="padding:8px 0;font-size:13px;display:flex;align-items:flex-start;gap:10px;">
           <span style="color:var(--af-blue-dim);font-weight:700;flex-shrink:0;">✓</span>
-          <span>A new Google Spreadsheet has been created for the client project</span>
+          <span>An IMPORT copy of the client's BSS has been created</span>
         </li>
       </ul>
     </div>
@@ -773,43 +807,44 @@ function pagBSI() {
         <div class="tool-card-name">Setup</div>
         <div class="tool-card-desc">Attach the BSI script to a client spreadsheet. Required once per project before any loading can begin.</div>
       </div>
-      <div class="tool-card" onclick="navigate('bsi-overview')">
-        <div class="tool-card-icon">📄</div>
-        <div class="tool-card-name">One-Pager</div>
-        <div class="tool-card-desc">Capabilities, load order, row status system, and limitations - all in one place.</div>
-      </div>
+      
       <div class="tool-card" onclick="navigate('bsi-technical')">
         <div class="tool-card-icon">⚙️</div>
         <div class="tool-card-name">Technical Guide</div>
         <div class="tool-card-desc">Full step-by-step workflow - Setup, Prep, Load, Sync, and Audit with field-level detail.</div>
       </div>
+      <div class="tool-card" onclick="navigate('bsi-onepager')">
+        <div class="tool-card-icon">📄</div>
+        <div class="tool-card-name">One-Pager</div>
+        <div class="tool-card-desc">A concise shareable reference covering capabilities, load order, and limitations.</div>
+      </div>
       <div class="tool-card" onclick="navigate('bsi-feedback')">
-        <div class="tool-card-icon">💬</div>
+        <div class="tool-card-icon">📋</div>
         <div class="tool-card-name">Feedback</div>
-        <div class="tool-card-desc">Report a bug, flag a data load issue, or submit feedback on the tool or documentation.</div>
+        <div class="tool-card-desc">Escalate bugs and provide feedback or feature suggestions!</div>
       </div>
     </div>
   `;
 }
 
 // ============================================================
-// PAGE: BSI ONE-PAGER (merged overview + reference)
+// PAGE: BSI OVERVIEW
 // ============================================================
 function pagBSIOverview() {
   return `
-    ${bc([{label:'Home',page:'home'},{label:'BSI',page:'bsi'},{label:'One-Pager'}])}
+    ${bc([{label:'Home',page:'home'},{label:'BSI',page:'bsi'},{label:'Overview'}])}
     <div class="page-header">
-      <h1>BSI <span>One-Pager</span></h1>
-      <p>What it is, how it fits into a project, and what it cannot do.</p>
+      <h1>BSI <span>Overview</span></h1>
+      <p>What it is, who uses it, and how it fits into an onboarding project.</p>
     </div>
 
     <div class="callout callout-blue">
-      <strong>Core value:</strong> Say goodbye to wipe-and-replace! BSI tracks every row individually: when errors occur, only those specific rows need to be corrected and resent - not the entire spreadsheet. Successful records are permanently skipped on future runs, so only new or broken rows get touched. Load across multiple sessions without ever disturbing what's already landed in AppFolio. With BSI, we now have the flexibility without the risk of overwriting good data.
+      <strong>Core value:</strong> BSI tracks every row individually. Rows marked Success are permanently skipped on future runs - only new or fixed rows get processed. You can add records mid-project, fix errors and re-run, or load object types across multiple sessions without touching anything already in AppFolio.
     </div>
 
     <div class="card" style="margin-bottom:16px;">
       <h2>What BSI Does</h2>
-      <p>BSI is a Google Sheets sidebar that connects directly to the Onboarding API to create onboarding records in volume. It handles the full set of objects needed to stand up a new AppFolio environment - from bank accounts through to tenant occupancies and recurring charges. Each load is additive and non-destructive: records already in AppFolio are never re-sent, or wiped.</p>
+      <p>BSI is a Google Sheets sidebar that connects directly to the Onboarding API to create onboarding records in volume. It handles the full set of entities needed to stand up a new AppFolio environment - from bank accounts through to tenant occupancies and recurring charges. Each load is additive and non-destructive: records already in AppFolio are never re-sent.</p>
     </div>
 
     <div class="section-title">Supported Objects</div>
@@ -825,16 +860,15 @@ function pagBSIOverview() {
     </div>
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Sub-operations</p>
     <div class="badge-grid">
-      <span class="obj-badge sub">GL Account Sync</span>
       <span class="obj-badge sub">Owner Assignments</span>
       <span class="obj-badge sub">Property Late Fees</span>
-      <span class="obj-badge sub">Recurring Charges</span>
       <span class="obj-badge sub">Occupancy Late Fees</span>
-      
+      <span class="obj-badge sub">Recurring Charges</span>
+      <span class="obj-badge sub">GL Account Sync</span>
     </div>
 
     <div class="section-title">Row Status System</div>
-    <div class="card" style="margin-bottom:16px;">
+    <div class="card">
       <p style="margin-bottom:10px;">Every row in every sheet tab carries a status that controls what happens on the next run:</p>
       <div>
         <span class="s-pill s-ready">Ready</span> Validated and queued for the next Load run<br/><br/>
@@ -842,35 +876,6 @@ function pagBSIOverview() {
         <span class="s-pill s-error">Error</span> Failed validation or API rejection - fix the row and re-Prep<br/><br/>
         <span class="s-pill s-pending">Pending</span> Submitted to AppFolio asynchronously - run Sync to resolve
       </div>
-    </div>
-
-    <div class="section-title">Required Load Order</div>
-    <div class="card" style="margin-bottom:16px;">
-      <ul class="step-list" style="padding:0;">
-        <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">1</div><div class="step-content"><h4>GL Account Import & Sync</h4><p style="font-size:12px;">Must be completed before anything else. Import the chart of accounts via the Spreadsheet Importer, then sync. GL UUIDs are stored as cell Notes and referenced throughout Prep - Properties with Additional Cash Accounts and Recurring Charges both depend on this.</p></div></li>
-        <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">2</div><div class="step-content"><h4>Banks</h4><p style="font-size:12px;">Required before Properties. Each property must be linked to an Operating Cash and Escrow bank account using IDs generated from this load.</p></div></li>
-        <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">3</div><div class="step-content"><h4>Owners + Properties (independent, but both needed before Owner Assignments)</h4><p style="font-size:12px;">Owners and Properties can be loaded in parallel - neither depends on the other. However, both must be fully loaded and synced before Owner Assignments can run, since assignments require an AppFolio Owner ID and a Property ID.</p></div></li>
-        <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">4</div><div class="step-content"><h4>Properties → Unit Types → Units</h4><p style="font-size:12px;">Unit Types and Units are children of Properties - they cannot exist without a parent Property ID. Unit Types must also be loaded before Units, as Units reference the Unit Type for classification.</p></div></li>
-        <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">5</div><div class="step-content"><h4>Units → Tenants (+ Sync) → Recurring Charges</h4><p style="font-size:12px;">Tenants are linked to a specific Unit at load time. After loading, Tenants must be synced to resolve the OccupancyId - this ID is required before Recurring Charges can be prepped or loaded.</p></div></li>
-        <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">6</div><div class="step-content"><h4>Late Fees (property or occupancy level)</h4><p style="font-size:12px;">Property Late Fees require a loaded Property ID. Occupancy Late Fees require a synced Tenant (OccupancyId). Both can be run independently once their parent is resolved.</p></div></li>
-      </ul>
-    </div>
-
-    <div class="section-title">What BSI Cannot Do</div>
-    <div class="card" style="margin-bottom:16px;">
-      <ul style="padding-left:16px;font-size:13px;color:var(--text-body);line-height:2;">
-        <li>Delete records already in AppFolio</li>
-        <li>Load work orders, maintenance requests, or inspections</li>
-        <li>Load lease documents or file attachments</li>
-        <li>Load portal settings or owner/tenant preferences</li>
-        <li>Transform or clean source data - data must arrive pre-formatted</li>
-        <li>Replace the manual GL Account import in the AppFolio UI</li>
-        <li>Operate outside of Google Sheets</li>
-      </ul>
-    </div>
-
-    <div class="callout callout-warn">
-      <strong>Data responsibility:</strong> BSI sends exactly what is in the sheet. Pre-clean and validate source data before running Prep - errors in source data result in API rejections or bad records in AppFolio.
     </div>
   `;
 }
@@ -901,7 +906,7 @@ function pagBSITechnical() {
           <div class="step-num">1</div>
           <div class="step-content">
             <h4>Setup - Connect and Configure</h4>
-            <p>Open the AppFolio Load Tool sidebar via the <em>Onboarding API</em> menu. Navigate to the Setup tab and enter your API credentials (Developer ID, Client ID, Client Secret). Select your target environment - IMPORT for testing, LIVE for production. The sidebar header will confirm the connected company name once credentials are saved.</p>
+            <p>Open the AppFolio Load Tool sidebar via the <em>Onboarding API</em> menu. Navigate to the Setup tab and enter your API credentials (Client ID, Client Secret). Select your target environment - IMPORT for testing, LIVE for production. The sidebar header will confirm the connected company name once credentials are saved.</p>
             <ul>
               <li>Always confirm the environment label before running any load</li>
               <li>GL Accounts must be uploaded and synced from AppFolio before loading Properties or Recurring Charges</li>
@@ -1016,6 +1021,69 @@ function pagBSITechnical() {
 }
 
 // ============================================================
+// PAGE: BSI ONE-PAGER
+// ============================================================
+function pagBSIOnePager() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'BSI',page:'bsi'},{label:'One-Pager'}])}
+    <div class="page-header">
+      <h1>BSI <span>One-Pager</span></h1>
+      <p>A concise reference for capabilities, load order, and what BSI cannot do.</p>
+    </div>
+    <div class="onepager-wrap">
+      <div class="onepager-toolbar">
+        <span>📄 BSI One-Pager - Build Spreadsheet Integration</span>
+      </div>
+      <div class="onepager-content">
+        <div class="callout callout-blue" style="margin-bottom:20px;">
+          <strong>Core value:</strong> BSI tracks every row individually. Success rows are permanently skipped - only new or fixed rows get processed. Add records mid-project, fix errors and re-run, or load object types across multiple sessions without affecting what is already in AppFolio.
+        </div>
+
+        <div class="section-title">What Can Be Loaded</div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">Primary objects</p>
+        <div class="badge-grid">
+          <span class="obj-badge">Banks</span><span class="obj-badge">Owners</span><span class="obj-badge">Properties</span>
+          <span class="obj-badge">Unit Types</span><span class="obj-badge">Units</span><span class="obj-badge">Tenants</span><span class="obj-badge">Vendors</span>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">Sub-operations</p>
+        <div class="badge-grid">
+          <span class="obj-badge sub">GL Account Sync</span><span class="obj-badge sub">Owner Assignments</span><span class="obj-badge sub">Property Late Fees</span>
+          <span class="obj-badge sub">Occupancy Late Fees</span><span class="obj-badge sub">Recurring Charges</span>
+        </div>
+
+        <div class="section-title" style="margin-top:20px;">Required Load Order</div>
+        <div class="card" style="box-shadow:none;">
+          <ul class="step-list" style="padding:0;">
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">1</div><div class="step-content"><h4>GL Account Sync</h4><p style="font-size:12px;">Must be completed before anything else. GL UUIDs are stored as cell Notes and referenced throughout Prep - Properties with Additional Cash Accounts and Recurring Charges both depend on this.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">2</div><div class="step-content"><h4>Banks</h4><p style="font-size:12px;">Required before Properties. Each property must be linked to an Operating Cash and Escrow bank account using IDs generated from this load.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">3</div><div class="step-content"><h4>Owners + Properties (independent, but both needed before Owner Assignments)</h4><p style="font-size:12px;">Owners and Properties can be loaded in parallel - neither depends on the other. However, both must be fully loaded and synced before Owner Assignments can run, since assignments require an AppFolio Owner ID and a Property ID.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">4</div><div class="step-content"><h4>Properties - Unit Types - Units</h4><p style="font-size:12px;">Unit Types and Units are children of Properties - they cannot exist without a parent Property ID. Unit Types must also be loaded before Units, as Units reference the Unit Type for classification.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">5</div><div class="step-content"><h4>Units - Tenants (+ Sync) - Recurring Charges</h4><p style="font-size:12px;">Tenants are linked to a specific Unit at load time. After loading, Tenants must be synced to resolve the OccupancyId - this ID is required before Recurring Charges can be prepped or loaded.</p></div></li>
+            <li class="step-item"><div class="step-num" style="width:20px;height:20px;font-size:10px;">6</div><div class="step-content"><h4>Late Fees (property or occupancy level)</h4><p style="font-size:12px;">Property Late Fees require a loaded Property ID. Occupancy Late Fees require a synced Tenant (OccupancyId). Both can be run independently once their parent is resolved.</p></div></li>
+          </ul>
+        </div>
+
+        <div class="section-title" style="margin-top:20px;">What BSI Cannot Do</div>
+        <div class="card" style="box-shadow:none;">
+          <ul style="padding-left:16px;font-size:13px;color:var(--text-body);line-height:2;">
+            <li>Delete records already in AppFolio</li>
+            <li>Load work orders, maintenance requests, or inspections</li>
+            <li>Load lease documents or file attachments</li>
+            <li>Transform or clean source data - data must arrive pre-formatted</li>
+            <li>Replace the manual GL Account import in the AppFolio UI</li>
+            <li>Operate outside of Google Sheets</li>
+          </ul>
+        </div>
+
+        <div class="callout callout-warn" style="margin-top:16px;">
+          <strong>Data responsibility:</strong> BSI sends exactly what is in the sheet. Pre-clean and validate source data before running Prep - errors in source data result in API rejections or bad records in AppFolio.
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
 // PAGE: PSI ROOT + STUBS
 // ============================================================
 function pagPSI() {
@@ -1026,36 +1094,25 @@ function pagPSI() {
       <p>Updates existing records in AppFolio via PATCH operations - field corrections and updates without re-creating records.</p>
     </div>
     <div class="card-grid">
-      <div class="tool-card" onclick="navigate('psi-overview')">
-        <div class="tool-card-icon">📄</div>
-        <div class="tool-card-name">One-Pager</div>
-        <div class="tool-card-desc">Capabilities, supported objects, and limitations - all in one place.</div>
-      </div>
       <div class="tool-card" onclick="navigate('psi-technical')">
         <div class="tool-card-icon">⚙️</div>
         <div class="tool-card-name">Technical Guide</div>
         <div class="tool-card-desc">Step-by-step PATCH workflow and field-level instructions.</div>
       </div>
+      <div class="tool-card" onclick="navigate('psi-onepager')">
+        <div class="tool-card-icon">📄</div>
+        <div class="tool-card-name">One-Pager</div>
+        <div class="tool-card-desc">Concise reference covering PSI capabilities and limitations.</div>
+      </div>
       <div class="tool-card" onclick="navigate('psi-feedback')">
-        <div class="tool-card-icon">💬</div>
+        <div class="tool-card-icon">📋</div>
         <div class="tool-card-name">Feedback</div>
-        <div class="tool-card-desc">Report a bug, flag a patch issue, or submit feedback on the tool or documentation.</div>
+        <div class="tool-card-desc">Escalate bugs or provide feedback or feature requests!</div>
       </div>
     </div>
   `;
 }
 
-function pagPSIOverview() {
-  return `
-    ${bc([{label:'Home',page:'home'},{label:'PSI',page:'psi'},{label:'One-Pager'}])}
-    <div class="page-header"><h1>PSI <span>One-Pager</span></h1></div>
-    <div class="coming-soon">
-      <div class="cs-icon">🔧</div>
-      <h2>Content Coming Soon</h2>
-      <p>PSI documentation is being prepared. Check back shortly or contact your project lead.</p>
-    </div>
-  `;
-}
 
 function pagPSITechnical() {
   return `
@@ -1069,4 +1126,613 @@ function pagPSITechnical() {
   `;
 }
 
+function pagPSIOnePager() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'PSI',page:'psi'},{label:'One-Pager'}])}
+    <div class="page-header"><h1>PSI <span>One-Pager</span></h1></div>
+    <div class="coming-soon">
+      <div class="cs-icon">📄</div>
+      <h2>Content Coming Soon</h2>
+      <p>The PSI one-pager will be added here once the tool documentation is finalized.</p>
+    </div>
+  `;
+}
+
+// ============================================================
+// PAGE: UPDATES — landing
+// ============================================================
+function pagUpdates() {
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'Updates'}])}
+    <div class="page-header">
+      <h1><span>Updates</span> & Roadmap</h1>
+      <p>Stay current on what's changed, what's broken (and being fixed), and help shape what comes next.</p>
+    </div>
+    <div class="card-grid">
+      <div class="tool-card" onclick="navigate('updates-changelog')">
+        <div class="tool-card-icon">🆕</div>
+        <div class="tool-card-name">What's New</div>
+        <div class="tool-card-desc">Release notes and recent changes across BSI, PSI, and the Hub itself.</div>
+      </div>
+      <div class="tool-card" onclick="navigate('updates-issues')">
+        <div class="tool-card-icon">🐞</div>
+        <div class="tool-card-name">Known Issues</div>
+        <div class="tool-card-desc">Active bugs and workarounds. Updated as issues are identified and resolved.</div>
+      </div>
+      <div class="tool-card" onclick="navigate('updates-requests')">
+        <div class="tool-card-icon">🗳</div>
+        <div class="tool-card-name">Feature Requests</div>
+        <div class="tool-card-desc">Vote on proposed features or suggest your own. Prioritization is driven by team input.</div>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// PAGE: WHAT'S NEW — live from Changelog tab
+// ============================================================
+
+const CL_TYPE_STYLE = {
+  'new':         { label: 'New',         bg: '#c6f6d5', color: '#1a4731' },
+  'fix':         { label: 'Fix',         bg: '#fed7d7', color: '#742a2a' },
+  'improvement': { label: 'Improvement', bg: '#e9d8fd', color: '#44337a' },
+  'docs':        { label: 'Docs',        bg: '#bee3f8', color: '#1a365d' }
+};
+
+function pagChangelog() {
+  if (typeof google !== 'undefined') {
+    setTimeout(function() {
+      google.script.run
+        .withSuccessHandler(_renderChangelog)
+        .withFailureHandler(function() {
+          const el = document.getElementById('cl-list');
+          if (el) el.innerHTML =
+            '<div class="callout callout-warn">Could not load changelog — check your connection and try again.</div>';
+        })
+        .getChangelog();
+    }, 0);
+  }
+
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'Updates',page:'updates'},{label:"What's New"}])}
+    <div class="page-header">
+      <h1>What's <span>New</span></h1>
+      <p>A running log of changes to the GSI tools and Hub documentation.</p>
+    </div>
+    <div id="cl-list">
+      <div style="font-size:13px;color:var(--text-muted);padding:12px 0;">Loading changelog…</div>
+    </div>
+  `;
+}
+
+function _renderChangelog(releases) {
+  const listEl = document.getElementById('cl-list');
+  if (!listEl) return;
+
+  if (!releases || releases.length === 0) {
+    listEl.innerHTML = `
+      <div class="card" style="text-align:center;padding:32px 20px;">
+        <div style="font-size:32px;margin-bottom:10px;">📋</div>
+        <h3 style="font-size:15px;font-weight:700;color:var(--text-dark);margin-bottom:6px;">No entries yet</h3>
+        <p style="font-size:13px;color:var(--text-muted);">Add rows to the Changelog tab and check Show in Hub to publish them here.</p>
+      </div>`;
+    return;
+  }
+
+  listEl.innerHTML = releases.map(function(r) {
+    const entriesHtml = r.entries.map(function(e, idx) {
+      const typeKey = String(e.type || '').toLowerCase().trim();
+      const s       = CL_TYPE_STYLE[typeKey] || { label: e.type || 'Update', bg: '#e2e8f0', color: '#4a5568' };
+      const entryId = 'cl-entry-' + r.version.replace(/\./g, '-') + '-' + idx;
+      const refsAttr = e.refIds && e.refIds.length ? e.refIds.join(',') : '';
+
+      const refBadges = e.refIds && e.refIds.length
+        ? '<span style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">'
+          + e.refIds.map(function(rid) {
+              const isFeat = rid.toUpperCase().startsWith('FEAT');
+              const onclick = isFeat
+                ? 'navigateToFeature(\'' + rid + '\')'
+                : 'navigateToIssue(\'' + rid + '\')';
+              return `<span onclick="${onclick}" title="${isFeat ? 'View in Feature Requests' : 'View in Known Issues'}"
+                           style="font-size:10px;font-weight:700;color:var(--af-blue-dim);cursor:pointer;
+                                  font-family:monospace;text-decoration:underline;text-decoration-style:dotted;
+                                  background:#eff6ff;padding:1px 6px;border-radius:3px;">${rid}</span>`;
+            }).join('')
+          + '</span>'
+        : '';
+
+      return `
+        <div id="${entryId}" ${refsAttr ? 'data-refs="' + refsAttr + '"' : ''}
+             style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #f0f4f8;">
+          <span style="background:${s.bg};color:${s.color};font-size:10px;font-weight:700;
+                       padding:2px 7px;border-radius:4px;white-space:nowrap;margin-top:2px;">${s.label}</span>
+          <div style="flex:1;min-width:0;">
+            <span style="font-size:13px;color:var(--text-body);line-height:1.6;">${e.description}</span>
+            ${refBadges}
+          </div>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="card" style="margin-bottom:20px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:2px solid #f0f4f8;">
+          <div style="font-size:18px;font-weight:800;color:var(--text-dark);">v${r.version}</div>
+          ${r.tag ? `<span style="background:#ebf8ff;color:#1a365d;font-size:11px;font-weight:700;
+                                  padding:3px 10px;border-radius:12px;">${r.tag}</span>` : ''}
+          <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">${r.date}</span>
+        </div>
+        ${entriesHtml}
+      </div>`;
+  }).join('');
+
+  // Highlight entries matching a pending cross-page link
+  if (_pendingChangelogHighlight) {
+    const targetId = _pendingChangelogHighlight;
+    _pendingChangelogHighlight = null;
+    const entries = document.querySelectorAll('[data-refs]');
+    var firstMatch = null;
+    entries.forEach(function(el) {
+      const refs = el.getAttribute('data-refs').split(',').map(function(r) { return r.trim(); });
+      if (refs.indexOf(targetId) !== -1) {
+        el.style.background  = '#fffbeb';
+        el.style.borderRadius = '4px';
+        el.style.transition  = 'background 0.6s';
+        setTimeout(function() { el.style.background = ''; }, 2500);
+        if (!firstMatch) firstMatch = el;
+      }
+    });
+    if (firstMatch) firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+// ============================================================
+// PAGE: KNOWN ISSUES — live from feedback tracker
+// ============================================================
+
+const KI_TOOL_STYLE = {
+  BSI: { color: '#c53030', bg: '#fff5f5' },
+  PSI: { color: '#2b6cb0', bg: '#ebf8ff' },
+  FSI: { color: '#276749', bg: '#f0fff4' }
+};
+
+// Normalise sheet Status values → display config
+// Sheet values may have varying casing — compare lowercase
+const KI_STATUS_MAP = {
+  'investigating': { label: 'Investigating', bg: '#fefce8', color: '#854d0e', border: '#fde047' },
+  'fix pending':   { label: 'Fix Pending',   bg: '#fff7ed', color: '#9a3412', border: '#fdba74' },
+  'resolved':      { label: 'Resolved',      bg: '#f0fff4', color: '#166534', border: '#86efac' }
+};
+
+function _kiStatusStyle(rawStatus) {
+  return KI_STATUS_MAP[String(rawStatus || '').toLowerCase().trim()]
+      || { label: rawStatus, bg: '#e2e8f0', color: '#4a5568', border: '#cbd5e0' };
+}
+
+function _renderKnownIssues(issues) {
+  const statsEl  = document.getElementById('ki-stats');
+  const listEl   = document.getElementById('ki-list');
+  if (!statsEl || !listEl) return;
+
+  if (!issues || issues.length === 0) {
+    statsEl.innerHTML = '';
+    listEl.innerHTML  = `
+      <div class="card" style="text-align:center;padding:32px 20px;">
+        <div style="font-size:32px;margin-bottom:10px;">✅</div>
+        <h3 style="font-size:15px;font-weight:700;color:var(--text-dark);margin-bottom:6px;">No known issues right now</h3>
+        <p style="font-size:13px;color:var(--text-muted);">If you hit a bug, use the BSI or PSI Feedback form to report it.</p>
+      </div>`;
+    return;
+  }
+
+  const active   = issues.filter(function(i) { return String(i.status||'').toLowerCase().trim() !== 'resolved'; });
+  const resolved = issues.filter(function(i) { return String(i.status||'').toLowerCase().trim() === 'resolved'; });
+
+  statsEl.innerHTML = `
+    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+      <div class="card" style="flex:1;min-width:120px;padding:14px 18px;text-align:center;">
+        <div style="font-size:24px;font-weight:800;color:#c53030;">${active.length}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Active Issues</div>
+      </div>
+      <div class="card" style="flex:1;min-width:120px;padding:14px 18px;text-align:center;">
+        <div style="font-size:24px;font-weight:800;color:#166534;">${resolved.length}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Resolved</div>
+      </div>
+      <div class="card" style="flex:1;min-width:120px;padding:14px 18px;text-align:center;">
+        <div style="font-size:24px;font-weight:800;color:var(--text-dark);">${issues.length}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Total Logged</div>
+      </div>
+    </div>`;
+
+  listEl.innerHTML = issues.map(function(iss) {
+    const s      = _kiStatusStyle(iss.status);
+    const t      = KI_TOOL_STYLE[iss.tool] || { color: '#4a5568', bg: '#f0f4f8' };
+    const cardId = iss.id ? 'ki-card-' + iss.id : '';
+    const idBadge = iss.id
+      ? `<span onclick="navigateToChangelog('${iss.id}')"
+               title="See in What's New"
+               style="font-size:11px;font-weight:700;color:var(--af-blue-dim);cursor:pointer;
+                      font-family:monospace;letter-spacing:0.3px;text-decoration:underline;
+                      text-decoration-style:dotted;">${iss.id}</span>`
+      : '';
+    return `
+      <div class="card" style="margin-bottom:14px;border-left:4px solid ${s.border};"
+           ${cardId ? `id="${cardId}"` : ''}>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+          ${idBadge}
+          <span style="background:${t.bg};color:${t.color};font-size:11px;font-weight:700;
+                       padding:2px 8px;border-radius:4px;">${iss.tool}</span>
+          <span style="background:${s.bg};color:${s.color};border:1px solid ${s.border};font-size:11px;
+                       font-weight:700;padding:2px 8px;border-radius:4px;margin-left:auto;">${s.label}</span>
+        </div>
+        <div style="font-size:14px;font-weight:700;color:var(--text-dark);margin-bottom:6px;">${iss.title}</div>
+        <p style="font-size:13px;color:var(--text-body);margin-bottom:${iss.workaround ? '8px' : '0'};">${iss.description}</p>
+        ${iss.workaround ? `
+          <div style="background:#f7f9fc;border:1px solid var(--card-border);border-radius:6px;
+                      padding:9px 13px;font-size:12px;color:var(--text-muted);">
+            <strong style="color:var(--text-dark);">Workaround:</strong> ${iss.workaround}
+          </div>` : ''}
+      </div>`;
+  }).join('');
+
+  // Apply pending highlight if navigated here via an ID link
+  if (_pendingIssueHighlight) {
+    const target = document.getElementById('ki-card-' + _pendingIssueHighlight);
+    _pendingIssueHighlight = null;
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.style.transition = 'box-shadow 0.3s';
+      target.style.boxShadow  = '0 0 0 3px #6DB8FF';
+      setTimeout(function() { target.style.boxShadow = ''; }, 2000);
+    }
+  }
+}
+
+function pagKnownIssues() {
+  // Kick off live data load immediately after render
+  if (typeof google !== 'undefined') {
+    setTimeout(function() {
+      google.script.run
+        .withSuccessHandler(_renderKnownIssues)
+        .withFailureHandler(function() {
+          const el = document.getElementById('ki-list');
+          if (el) el.innerHTML =
+            '<div class="callout callout-warn">Could not load issues — check your connection and try again.</div>';
+        })
+        .getKnownIssues();
+    }, 0);
+  }
+
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'Updates',page:'updates'},{label:'Known Issues'}])}
+    <div class="page-header">
+      <h1>Known <span>Issues</span></h1>
+      <p>Active bugs and confirmed edge cases pulled live from the feedback tracker, with workarounds where available.</p>
+    </div>
+
+    <div id="ki-stats"></div>
+
+    <div class="section-title">Issue Log</div>
+    <div id="ki-list">
+      <div style="font-size:13px;color:var(--text-muted);padding:12px 0;">Loading issues…</div>
+    </div>
+
+    <div class="callout callout-blue" style="margin-top:16px;">
+      Found a bug not listed here? Use the
+      <span onclick="navigate('bsi-feedback')" style="color:var(--af-blue-dim);cursor:pointer;text-decoration:underline;">BSI Feedback</span> or
+      <span onclick="navigate('psi-feedback')" style="color:var(--af-blue-dim);cursor:pointer;text-decoration:underline;">PSI Feedback</span>
+      form to report it.
+    </div>
+  `;
+}
+
+// ============================================================
+// PAGE: FEATURE REQUESTS — live from Feature Bank tab
+// ============================================================
+
+// Status labels — keys are lowercase for case-insensitive matching
+const STATUS_LABELS = {
+  'planned':      { label: 'Planned',      bg: '#c6f6d5', color: '#1a4731' },
+  'under review': { label: 'Under Review', bg: '#bee3f8', color: '#1a365d' },
+  'backlog':      { label: 'Backlog',      bg: '#e2e8f0', color: '#4a5568' },
+  'in progress':  { label: 'In Progress',  bg: '#e9d8fd', color: '#44337a' }
+};
+
+// Tracks which feature IDs are currently rendered — used by _featRefreshDiscSummaries
+let _currentFeatureIds = [];
+
+// Discussion state — reset on each page visit
+let _featDiscData      = {};
+let _featCommentsCache = {};
+
+function pagFeatureRequests() {
+  _currentFeatureIds = [];
+  _featDiscData      = {};
+  _featCommentsCache = {};
+
+  if (typeof google !== 'undefined') {
+    setTimeout(function() {
+      google.script.run
+        .withSuccessHandler(_renderFeatureBank)
+        .withFailureHandler(function() {
+          const el = document.getElementById('feat-list');
+          if (el) el.innerHTML =
+            '<div class="callout callout-warn">Could not load features — check your connection and try again.</div>';
+        })
+        .getFeatureBankItems();
+    }, 0);
+  }
+
+  return `
+    ${bc([{label:'Home',page:'home'},{label:'Updates',page:'updates'},{label:'Feature Requests'}])}
+    <div class="page-header">
+      <h1>Feature <span>Requests</span></h1>
+      <p>Browse features up for discussion and add context from your projects. The more customer detail we have, the better we can prioritize.</p>
+    </div>
+
+    <div class="section-title">Proposed Features</div>
+    <div id="feat-list">
+      <div style="font-size:13px;color:var(--text-muted);padding:12px 0;">Loading features…</div>
+    </div>
+
+    <div class="callout callout-blue" style="margin-top:16px;">
+      Have a feature idea? Submit it via the
+      <span onclick="navigate('bsi-feedback')" style="color:var(--af-blue-dim);cursor:pointer;text-decoration:underline;">BSI Feedback</span> or
+      <span onclick="navigate('psi-feedback')" style="color:var(--af-blue-dim);cursor:pointer;text-decoration:underline;">PSI Feedback</span>
+      form under "The tool is missing something or could work better."
+    </div>
+  `;
+}
+
+function _renderFeatureBank(items) {
+  const listEl = document.getElementById('feat-list');
+  if (!listEl) return;
+
+  if (!items || items.length === 0) {
+    listEl.innerHTML = `
+      <div class="card" style="text-align:center;padding:32px 20px;">
+        <div style="font-size:32px;margin-bottom:10px;">🗳</div>
+        <h3 style="font-size:15px;font-weight:700;color:var(--text-dark);margin-bottom:6px;">No features up for discussion yet</h3>
+        <p style="font-size:13px;color:var(--text-muted);">Check back soon — the team adds features here as they're prioritized.</p>
+      </div>`;
+    return;
+  }
+
+  _currentFeatureIds = items.map(function(f) { return f.id; });
+
+  listEl.innerHTML = items.map(function(f) {
+    const statusKey = String(f.status || '').toLowerCase().trim();
+    const s = STATUS_LABELS[statusKey] || { label: f.status, bg: '#e2e8f0', color: '#4a5568' };
+    const emoji = f.emoji || '💡';
+    return `
+      <div class="card" style="margin-bottom:14px;" id="feat-card-${f.id}">
+        <div style="display:flex;align-items:flex-start;gap:14px;">
+          <div style="font-size:28px;flex-shrink:0;margin-top:2px;">${emoji}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;gap:8px;margin-bottom:4px;flex-wrap:wrap;align-items:center;">
+              <span style="font-size:14px;font-weight:700;color:var(--text-dark);">${f.title}</span>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+              <span style="background:${s.bg};color:${s.color};font-size:10px;font-weight:700;
+                           padding:2px 7px;border-radius:4px;">${s.label}</span>
+              <span style="background:#f0f4f8;color:var(--text-muted);font-size:10px;font-weight:600;
+                           padding:2px 7px;border-radius:4px;">${f.tool}</span>
+              <span onclick="navigateToChangelog('${f.id}')" title="See in What's New"
+                    style="font-family:monospace;font-size:10px;font-weight:700;color:var(--af-blue-dim);
+                           cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
+                           background:#eff6ff;padding:2px 7px;border-radius:4px;">${f.id}</span>
+            </div>
+            <p style="font-size:13px;color:var(--text-body);line-height:1.6;margin-bottom:10px;">${f.description}</p>
+            <div id="feat-disc-summary-${f.id}" style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+              Loading discussion…
+            </div>
+            <button id="feat-disc-btn-${f.id}" onclick="_featToggleDiscussion('${f.id}')"
+              style="background:#f7f9fc;border:1.5px solid var(--card-border);border-radius:6px;
+                     padding:6px 14px;font-size:12px;font-weight:600;color:var(--text-dark);
+                     cursor:pointer;font-family:inherit;transition:background 0.15s;"
+              onmouseover="this.style.background='#e2e8f0'"
+              onmouseout="this.style.background='#f7f9fc'">
+              💬 Discuss
+            </button>
+          </div>
+        </div>
+
+        <div id="feat-disc-panel-${f.id}"
+             style="display:none;margin-top:14px;border-top:1px solid var(--card-border);padding-top:14px;">
+          <div id="feat-disc-comments-${f.id}" style="margin-bottom:14px;">
+            <div style="font-size:12px;color:var(--text-muted);">Loading comments…</div>
+          </div>
+          <div style="background:#f7f9fc;border-radius:8px;padding:14px;" id="feat-comment-form-${f.id}">
+            <div style="font-size:12px;font-weight:700;color:var(--text-dark);margin-bottom:10px;">Add your thoughts</div>
+            <div style="margin-bottom:9px;">
+              <label style="font-size:11px;font-weight:600;color:var(--text-dark);display:block;margin-bottom:4px;">
+                Customer / Account <span style="color:#c53030;">*</span>
+                <span style="font-weight:400;color:var(--text-muted);"> — which customer prompted this?</span>
+              </label>
+              <input id="fc-account-${f.id}" type="text" placeholder="e.g. Acme Property Mgmt or General"
+                style="width:100%;border:1.5px solid var(--card-border);border-radius:6px;padding:8px 11px;
+                       font-size:12px;font-family:inherit;color:var(--text-dark);outline:none;background:#fff;"
+                onfocus="this.style.borderColor='var(--af-blue-dim)'"
+                onblur="this.style.borderColor='var(--card-border)'"/>
+            </div>
+            <div style="margin-bottom:9px;">
+              <label style="font-size:11px;font-weight:600;color:var(--text-dark);display:block;margin-bottom:4px;">
+                Comment <span style="color:#c53030;">*</span>
+              </label>
+              <textarea id="fc-comment-${f.id}" rows="3"
+                placeholder="Why is this useful? Any context, edge cases, or workaround you're using now?"
+                style="width:100%;border:1.5px solid var(--card-border);border-radius:6px;padding:8px 11px;
+                       font-size:12px;font-family:inherit;color:var(--text-dark);resize:vertical;outline:none;background:#fff;"
+                onfocus="this.style.borderColor='var(--af-blue-dim)'"
+                onblur="this.style.borderColor='var(--card-border)'"></textarea>
+            </div>
+            <div id="fc-error-${f.id}" style="display:none;color:#c53030;font-size:11px;margin-bottom:8px;"></div>
+            <button onclick="_featSubmitComment('${f.id}', this)"
+              style="background:var(--af-blue-dim);color:#fff;border:none;border-radius:6px;
+                     padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">
+              Post Comment
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Highlight a feature card if navigated here via a What's New reference link
+  if (_pendingFeatureHighlight) {
+    var featTarget = document.getElementById('feat-card-' + _pendingFeatureHighlight);
+    _pendingFeatureHighlight = null;
+    if (featTarget) {
+      featTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      featTarget.style.transition = 'box-shadow 0.3s';
+      featTarget.style.boxShadow  = '0 0 0 3px #6DB8FF';
+      setTimeout(function() { featTarget.style.boxShadow = ''; }, 2000);
+    }
+  }
+
+  // Load comment counts now that cards are in the DOM
+  if (typeof google !== 'undefined') {
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (!data) return;
+        _featDiscData = data;
+        _featRefreshDiscSummaries();
+      })
+      .getFeatureCommentCounts();
+  }
+}
+
+function _featRefreshDiscSummaries() {
+  _currentFeatureIds.forEach(function(fid) {
+    const el = document.getElementById('feat-disc-summary-' + fid);
+    if (!el) return;
+    const data = _featDiscData[fid];
+    if (!data || data.count === 0) {
+      el.textContent = 'No discussion yet — be the first to add context.';
+      return;
+    }
+    const shown   = data.accounts.slice(0, 3);
+    const extra   = data.accounts.length - shown.length;
+    const acctStr = shown.length
+      ? ' &nbsp;·&nbsp; ' + shown.map(a => `<span style="background:#ebf8ff;color:#1a365d;font-size:10px;
+          font-weight:600;padding:1px 6px;border-radius:4px;margin-right:3px;">🏢 ${a}</span>`).join('')
+        + (extra > 0 ? `<span style="font-size:11px;color:var(--text-muted);">+${extra} more</span>` : '')
+      : '';
+    el.innerHTML = `<strong style="color:var(--text-dark);">${data.count} comment${data.count !== 1 ? 's' : ''}</strong>${acctStr}`;
+  });
+}
+
+function _featToggleDiscussion(featureId) {
+  const panel = document.getElementById('feat-disc-panel-' + featureId);
+  const btn   = document.getElementById('feat-disc-btn-'   + featureId);
+  if (!panel) return;
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? 'block' : 'none';
+  btn.textContent     = opening ? '✕ Close discussion' : '💬 Discuss';
+  if (opening && !_featCommentsCache[featureId]) {
+    _featLoadComments(featureId);
+  } else if (opening) {
+    _featRenderComments(featureId);
+  }
+}
+
+function _featLoadComments(featureId) {
+  const container = document.getElementById('feat-disc-comments-' + featureId);
+  if (!container) return;
+  container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Loading…</div>';
+
+  if (typeof google === 'undefined') {
+    _featCommentsCache[featureId] = [];
+    _featRenderComments(featureId);
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(comments) {
+      _featCommentsCache[featureId] = comments || [];
+      _featRenderComments(featureId);
+    })
+    .withFailureHandler(function() {
+      if (container) container.innerHTML =
+        '<div style="font-size:12px;color:#c53030;">Could not load comments — try again later.</div>';
+    })
+    .getFeatureComments(featureId);
+}
+
+function _featRenderComments(featureId) {
+  const container = document.getElementById('feat-disc-comments-' + featureId);
+  if (!container) return;
+  const comments = _featCommentsCache[featureId] || [];
+  if (comments.length === 0) {
+    container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);font-style:italic;padding-bottom:4px;">No comments yet.</div>';
+    return;
+  }
+  container.innerHTML = comments.map(function(c) {
+    const date  = c.timestamp
+      ? new Date(c.timestamp).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})
+      : '';
+    const userParts = (c.submittedBy || 'you').replace(/@.*/, '').split('.');
+    const initials  = (userParts[0][0] + (userParts[1] ? userParts[1][0] : '')).toUpperCase();
+    return `
+      <div style="padding:10px 0;border-bottom:1px solid #f0f4f8;display:flex;gap:10px;align-items:flex-start;">
+        <div style="width:28px;height:28px;background:var(--af-dark);color:var(--af-blue);border-radius:50%;
+                    display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">
+          ${initials}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;">
+            <span style="font-size:12px;font-weight:700;color:var(--text-dark);">${(c.submittedBy||'you').replace(/@.*/,'')}</span>
+            ${c.account ? `<span style="background:#ebf8ff;color:#1a365d;font-size:10px;font-weight:600;
+                                        padding:1px 7px;border-radius:4px;">🏢 ${c.account}</span>` : ''}
+            <span style="font-size:11px;color:var(--text-muted);margin-left:auto;">${date}</span>
+          </div>
+          <p style="font-size:13px;color:var(--text-body);line-height:1.5;margin:0;">${c.comment}</p>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function _featSubmitComment(featureId, btn) {
+  const account = (document.getElementById('fc-account-' + featureId).value || '').trim();
+  const comment = (document.getElementById('fc-comment-' + featureId).value || '').trim();
+  const errEl   = document.getElementById('fc-error-'   + featureId);
+
+  errEl.style.display = 'none';
+  if (!account) { errEl.textContent = 'Please enter a customer or account name (use "General" if not customer-specific).'; errEl.style.display = 'block'; return; }
+  if (!comment) { errEl.textContent = 'Please add a comment.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled    = true;
+  btn.textContent = 'Posting…';
+
+  function onSuccess(res) {
+    if (!_featCommentsCache[featureId]) _featCommentsCache[featureId] = [];
+    _featCommentsCache[featureId].push({
+      comment:     comment,
+      account:     account,
+      submittedBy: (res && res.submittedBy) ? res.submittedBy : 'you',
+      timestamp:   new Date().toISOString()
+    });
+    if (!_featDiscData[featureId]) _featDiscData[featureId] = { count: 0, accounts: [] };
+    _featDiscData[featureId].count++;
+    if (account && _featDiscData[featureId].accounts.indexOf(account) === -1) {
+      _featDiscData[featureId].accounts.push(account);
+    }
+    _featRefreshDiscSummaries();
+    _featRenderComments(featureId);
+    document.getElementById('fc-account-' + featureId).value = '';
+    document.getElementById('fc-comment-' + featureId).value = '';
+    btn.disabled    = false;
+    btn.textContent = 'Post Comment';
+  }
+
+  if (typeof google === 'undefined') { onSuccess(); return; }
+
+  google.script.run
+    .withSuccessHandler(onSuccess)
+    .withFailureHandler(function(err) {
+      btn.disabled    = false;
+      btn.textContent = 'Post Comment';
+      errEl.textContent = 'Failed to post: ' + (err.message || 'please try again.');
+      errEl.style.display = 'block';
+    })
+    .submitFeatureComment(featureId, comment, account);
+}
 </script>
