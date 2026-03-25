@@ -33,7 +33,8 @@ const ESCALATION_HEADERS = [
   'Screenshots',
   'Submitted By',
   'Timestamp',
-  'Status'
+  'Status',
+  'Submission ID'
 ];
 
 const TAB_MAP = {
@@ -41,6 +42,28 @@ const TAB_MAP = {
   PSI: 'PSI Escalation Log',
   FSI: 'FSI Escalation Log'
 };
+
+
+// ── ID generation ────────────────────────────────────────────
+//
+// Scans the Submission ID column for the highest existing number
+// and returns the next sequential ID for the given tool prefix.
+// e.g. tool='BSI', highest existing='BSI-003' → returns 'BSI-004'
+// ─────────────────────────────────────────────────────────────
+function _nextSubmissionId_(sheet, tool) {
+  const data    = sheet.getDataRange().getValues();
+  const headers = data[0].map(function(h) { return String(h).trim(); });
+  const idCol   = headers.indexOf('Submission ID');
+  if (idCol === -1) return null;
+
+  var max = 0;
+  for (var i = 1; i < data.length; i++) {
+    var val   = String(data[i][idCol] || '').trim();
+    var match = val.match(/^[A-Z]+-(\d+)$/);
+    if (match) max = Math.max(max, parseInt(match[1], 10));
+  }
+  return tool + '-' + String(max + 1).padStart(3, '0');
+}
 
 
 // ── Step 1: Save draft to Script Properties ──────────────────
@@ -141,6 +164,15 @@ function submitEscalation() {
 
   const submittedBy = Session.getActiveUser().getEmail();
 
+  // ── Generate Submission ID before appending ──────────────
+  // Read headers to find the Submission ID column index (1-based for getRange).
+  const allHeaders  = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idColIndex  = allHeaders.map(function(h) { return String(h).trim(); })
+                                .indexOf('Submission ID');
+  const submissionId = idColIndex !== -1
+    ? _nextSubmissionId_(sheet, tool)
+    : null;
+
   // ── Append row (order matches ESCALATION_HEADERS) ───────
   sheet.appendRow([
     data.customerName,
@@ -156,19 +188,26 @@ function submitEscalation() {
     data.status
   ]);
 
+  // ── Write Submission ID into its column ──────────────────
+  // Done after appendRow so the row number is known (getLastRow).
+  if (submissionId && idColIndex !== -1) {
+    sheet.getRange(sheet.getLastRow(), idColIndex + 1).setValue(submissionId);
+  }
+
   // ── Slack notification (non-fatal) ──────────────────────
-  // Per-tool webhook takes priority over the shared fallback.
   const webhookUrl =
     props.getProperty('SLACK_WEBHOOK_' + tool) ||
     props.getProperty('SLACK_WEBHOOK_URL')      ||
     '';
 
   if (webhookUrl) {
-    _sendSlackNotification(webhookUrl, data, submittedBy);
+    _sendSlackNotification(webhookUrl, data, submittedBy, submissionId);
   }
 
   // ── Clean up draft ──────────────────────────────────────
   props.deleteProperty(ESCALATION_DRAFT_KEY);
+
+  return { submissionId: submissionId || null };
 }
 
 
@@ -180,8 +219,9 @@ function submitEscalation() {
 //
 // Non-fatal: a Slack failure never blocks the sheet write.
 // ─────────────────────────────────────────────────────────────
-function _sendSlackNotification(webhookUrl, data, submittedBy) {
+function _sendSlackNotification(webhookUrl, data, submittedBy, submissionId) {
   const payload = {
+    submissionId:    submissionId || '',
     tool:            data.tool,
     customerName:    data.customerName,
     pmreoLink:       data.pmreoLink,
